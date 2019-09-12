@@ -161,7 +161,7 @@ uint8 wake_up() {
 			dwt_entersleep();
 
 			// Wait and wake up the device
-			Sleep(wus_end_time_ms +250);
+			Sleep(wus_end_time_ms);
 			port_wakeup_dw1000_fast();
 
 			// Set interrupt and antenna delay
@@ -235,7 +235,8 @@ uint8 read_final_msg() {
 
     		if (rx_buffer[9] == TWR_BEGIN) {
     			if (dev->add != (rx_buffer[idx + 1] << 8 | rx_buffer[idx])) {
-					println("go back to sleep");
+					sprintf(debug, "Go back to sleep, %04X chosen", (rx_buffer[idx + 1] << 8 | rx_buffer[idx]));
+					println(debug);
 #if LPL_MODE
 					return PUT_TO_SLEEP;
 #else
@@ -279,7 +280,7 @@ uint8 read_final_msg() {
 				if (rx_buffer[9] == TWR_END) {
 					sprintf(debug, "DIST: %2.3fm with %04X, [%d]", (total / count), tag_address, count);
 					println(debug);
-
+					//calibrate_antenna_delay((double)(total/count));
 					sprintf(debug, "wu --> poll : %fms", te - ts);
 					println(debug);
 					//sprintf(debug, "%dms", wu_wait);

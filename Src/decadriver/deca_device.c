@@ -193,8 +193,8 @@ int dwt_initialise(uint16 config)
     	println("no calibration for xtrim");
         pdw1000local->init_xtrim = FS_XTALT_MIDRANGE ; // Set to mid-range if no calibration value inside
     } else {
-    	sprintf(debug, " - xtrim: %d", pdw1000local->init_xtrim);
-    	println(debug);
+    	//sprintf(debug, " - xtrim: %d", pdw1000local->init_xtrim);
+    	//println(debug);
     }
 
     // Configure XTAL trim
@@ -2281,7 +2281,7 @@ void dwt_isr(void)
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR); // Clear RX error event bits
         //println("\nERROR: ");
 
-		if (status & SYS_STATUS_RXPHE) {
+		/*if (status & SYS_STATUS_RXPHE) {
 			println("RXPHE");
 		}
 
@@ -2303,7 +2303,7 @@ void dwt_isr(void)
 
         if (status & SYS_STATUS_LDEERR) {
         	println("LDEERR");
-		}
+		}*/
         pdw1000local->wait4resp = 0;
 
         // Because of an issue with receiver restart after error conditions, an RX reset must be applied after any error or timeout event to ensure

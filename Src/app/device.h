@@ -14,6 +14,9 @@
 #define TAG    0
 #define ANCHOR 1
 #define LPL_MODE 1
+#define CALIBRATE 0
+
+#define TEST_ADD 0x00
 
 #define RX_RESPONSE_TURNAROUND 300
 #define DW_RX_ON_DELAY 16
@@ -90,10 +93,14 @@ typedef struct {
 	delay_config_t delay;
 } dw_device_t;
 
+
+#define NB_CALIB 4
 typedef struct {
-	uint32 devId;
+	uint16 devId;
 	uint16 ant_dly;
 }dev_cfg_t;
+
+
 
 
 /* Declaration of interrupt callback */

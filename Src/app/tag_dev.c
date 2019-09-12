@@ -1,5 +1,5 @@
 /*
- * tag_dev.c
+++- * tag_dev.c
  *
  *  Created on: 16 juil. 2019
  *      Author: Noolitic
@@ -28,7 +28,7 @@ static uint64 resp_rx_ts;
 static uint64 final_tx_ts;
 
 static uint8 frame_seq_nb = 0;
-static uint8 sample = 0;
+static int sample = 0;
 static uint8 ranging_anch = 0;
 
 static uint8 poll_msg[] = {0x01, 0x02, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0x21, 0, 0};
@@ -73,6 +73,10 @@ int tag_dev(void) {
 			case ASK_SERVER:
 				nb_try = 0;
 				serverOk = 0;
+#if CALIBRATE
+				//state = WAKE_UP_ANCHOR;
+				state = SEND_POLL;
+#else
 				ret = send_cmsghex_lora(askmsg, 3);
 				if (ret == 1) {
 					start = get_systime_ms();
@@ -83,6 +87,7 @@ int tag_dev(void) {
 					println(debug);
 					Sleep(1000);
 				}
+#endif
 				break;
 
 			case WAIT_SERVER_RESP:
@@ -211,7 +216,7 @@ int tag_dev(void) {
 				frame_counter = dev->delay.wuFrame_nb; //WUS_FRAME_NB
 #endif
 				state = ASK_SERVER;
-				random_wait_time = WAIT_TIME + 1000 * (((int)get_systime_ms()) % 10);
+				random_wait_time = 2000; //WAIT_TIME + 1000 * (((int)get_systime_ms()) % 10);
 				if (end < start) {
 					end = end + 17207 - start;
 				} else {
@@ -258,7 +263,7 @@ uint8 check_server_resp() {
 uint8 send_wu_frames(uint16 frame_counter) {
 	if (frame_counter == 0) {
 		println("[-wake up sequence finished-]");
-		Sleep(500);
+		Sleep(50);
 		return SEND_POLL;
 	}
 	wus_msg[WU_MSG_CNTDWN_IDX] = frame_counter & 0xFF;
@@ -375,10 +380,17 @@ void send_result() {
 	data[1] = dev->add;
 	data[2] = 0x02;
 	uint dist_d = 0;
+	float total = 0;
 	int len = 3;
 	char debug[30];
 	for (int i = 0; i < 4; i++) {
-		dist_d = (uint) (get_average_distance(i) * 1000) % 1000000;
+		total = get_average_distance(i);
+		dist_d = (uint) (total * 1000) % 1000000;
+#if CALIBRATE
+		if (i == 0) {
+			// calibrate_antenna_delay(total);
+		}
+#endif
 		data[len + ADD0] = (anch_dist[i].address >> 8) & 0xFF;
 		data[len + ADD1] = anch_dist[i].address & 0xFF;
 		sprintf(data + len + DIST, "%0*d", 6, dist_d);
@@ -388,6 +400,7 @@ void send_result() {
 		println(debug);
 		anch_dist[i].address = 0x0000;
 	}
+#if !CALIBRATE
 	enable_loraIRQ();
 	int ret = 0;
 	for (int i = 0; i < 2; i++) {
@@ -405,6 +418,7 @@ void send_result() {
 	}
 	println("has not been send");
 	lora_status = LW_NONE;
+#endif
 }
 
 float get_average_distance(int anch_id) {

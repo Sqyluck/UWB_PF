@@ -63,14 +63,22 @@ static uint32 txPower[16] = { 0x00000000, 0x67676767, 0x67676767, 0x8B8B8B8B, 0x
 							  0x00000000, 0x07274767, 0x07274767, 0x2B4B6B8B, 0x3A5A7A9A, 0x25456585, 0x00000000 ,0x5171B1D1};
 static uint8 PGdelay[8] = { 0x00, 0xC9, 0xC2, 0xC5, 0x95, 0xC0, 0x00, 0x93 };
 
-static dev_cfg_t dev_cfg[2] = {
+static dev_cfg_t dev_cfg[NB_CALIB] = {
 		{
-				0x100011CC,
-				0
+				0x11CC,
+				16473
 		},
 		{
-				0x100011CB,
-				0
+				0x11CB,
+				16466
+		},
+		{
+				0x11D5,
+				16441
+		},
+		{
+				0x11DE,
+				16444
 		}
 };
 
@@ -274,6 +282,45 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 	//sprintf(debug, "replyDelA: %d");
 }
 
+void calibrate_antenna_delay(double dist) {
+	double threshold = 0.9;
+	uint8 change_ant_dly = 0;
+	char debug[30];
+	if (dist < threshold - 0.10) {
+		change_ant_dly = 1;
+		device.ant_dly -= 10;
+		sprintf(debug, " --- ant delay: %d", device.ant_dly);
+	} else if (threshold + 0.10 < dist) {
+		change_ant_dly = 1;
+		device.ant_dly += 10;
+		sprintf(debug, " +++ ant delay: %d", device.ant_dly);
+	} else if (dist < threshold - 0.05) {
+		change_ant_dly = 1;
+		device.ant_dly -= 5;
+		sprintf(debug, " -- ant delay: %d", device.ant_dly);
+	} else if (threshold + 0.05 < dist) {
+		change_ant_dly = 1;
+		device.ant_dly += 5;
+		sprintf(debug, " ++ ant delay: %d", device.ant_dly);
+	} else if (dist < threshold - 0.02) {
+		change_ant_dly = 1;
+		device.ant_dly -= 1;
+		sprintf(debug, " - ant delay: %d", device.ant_dly);
+	} else if (threshold + 0.02 < dist) {
+		change_ant_dly = 1;
+		device.ant_dly += 1;
+		sprintf(debug, " + ant delay: %d", device.ant_dly);
+	}
+
+	if (change_ant_dly == 1) {
+		println("");
+		print("###");
+		dwt_setrxantennadelay(device.ant_dly);
+		dwt_settxantennadelay(device.ant_dly);
+		println(debug);
+	}
+}
+
 void set_ranging_exchange_config() {
 	dwt_forcetrxoff();
 	dwt_rxreset();
@@ -358,13 +405,12 @@ void set_local_config () {
     char debug[30];
     devId = _dwt_otpread(PARTID_ADDRESS);
     device.add = devId & 0xFFFF;
-    //device.add = devId & 0xFFFC;
-    //device.add = devId | 0x0003;
+    //device.add = device.add & 0xFFFC;
+    //device.add = device.add | TEST_ADD;
     device.id = device.add & 0x03;
-    for (int i = 0; i < 2; i++) {
-    	if (devId == dev_cfg[i].devId) {
+    for (int i = 0; i < NB_CALIB; i++) {
+    	if ((devId & 0xFFFF) == dev_cfg[i].devId) {
     		device.ant_dly = dev_cfg[i].ant_dly;
-    		println("Antenna calibrated with personal config");
     	}
     }
 	if (device.ant_dly == 0) {
@@ -414,7 +460,7 @@ void put_dev_to_sleep() {
     dwt_configuresleep(DWT_PRESRV_SLEEP | DWT_CONFIG | DWT_RX_EN, DWT_WAKE_SLPCNT | DWT_SLP_EN);
     port_EnableEXT_IRQ();
 	dwt_setsnoozetime(LPL_SHORT_SLEEP_SNOOZE_TIME);
-	dwt_setpreambledetecttimeout(LPL_RX_SNIFF_TIME);
+	dwt_setpreambledetecttimeout(LPL_RX_SNIFF_TIME + 6);
 	dwt_setlowpowerlistening(1);
 	lpl_status = ASLEEP;
 	dwt_entersleep();
@@ -470,7 +516,7 @@ static void SYSCLKConfig_STOP(void)
   }
 }
 
-void put_stm32_to_stop_mode() {
+/*void put_stm32_to_stop_mode() {
 	GPIO_InitTypeDef GPIO_InitStruct;
 
 	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
@@ -522,7 +568,7 @@ void put_stm32_to_stop_mode() {
 
     SYSCLKConfig_STOP();
     println("exit sleep mode");
-}
+}*/
 
 void hardreset_DW1000() {
 	HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_RESET);
