@@ -10,8 +10,9 @@
 #include "main.h"
 #include "LoRadriver.h"
 #include "device.h"
+#include "port.h"
 
-#define DEBUG 1
+#define DEBUG 3
 
 extern UART_HandleTypeDef huart1;
 
@@ -163,6 +164,7 @@ int getByteFromStrResp(char* str) {
 int isLoraConnected() {
 	phase = AT;
 	int nb_try = 0;
+	answer_ok = 0;
 	while ( (!answer_ok) && (nb_try < 5) ) {
 		send_str_lora("AT\r\n");
 		HAL_Delay(500);
@@ -174,13 +176,13 @@ int isLoraConnected() {
 int send_cmsghex_lora(unsigned char * hex, int size) {
 	char msghex[60] = "";
 	char debug[30];
-	int currentsize = 11;
+	int currentsize = 10;
 	if (IRQ_enabled == 0) {
 		enable_loraIRQ();
 		println("need to enable IRQ");
 	}
 
-	sprintf(msghex, "AT+CMSGHEX=");
+	sprintf(msghex, "AT+MSGHEX=");
 	for (int i = 0; i < size; i++) {
 		if (size == 35) {
 			if (isDistFields(i)) {
@@ -218,12 +220,28 @@ int send_cmsghex_lora(unsigned char * hex, int size) {
 }
 
 int wait_lora_status(int status, int timeout) {
-	char debug[30];
+	int start_ts;
+	start_ts = portGetTickCnt();
+	while (lora_status != status) {
+		if (start_ts + timeout < portGetTickCnt()) {
+			return 0;
+		}
+	}
+	if (lora_status == status) {
+		lora_status = LW_NONE;
+		return 1;
+	} else {
+		println("TIMEOUT, EXPECTED STATUS NOT RECEIVED");
+		return 0;
+	}
+
+	/*char debug[30];
 	double sending_time, current_time, previous_time = 0, global_time, save_time = 0;
 	current_time = get_systime_s();
 	sending_time = current_time;
 	global_time = current_time;
 	int counter = 0, show_timer = 0;
+
 	while (lora_status != status) {
 		current_time = get_systime_s();
 		if (current_time < previous_time) {
@@ -251,7 +269,7 @@ int wait_lora_status(int status, int timeout) {
 	} else {
 		println("TIMEOUT, EXPECTED STATUS NOT RECEIVED");
 		return 0;
-	}
+	}*/
 }
 
 void send_str_lora(char * cmd) {
@@ -262,6 +280,7 @@ void clear_lora_pending_message() {
 	int leave = 0;
 	while (leave == 0) {
 		leave = 1;
+		println("AT+MSG");
 		send_str_lora("AT+MSG\r\n");
 		while(lora_status != LW_DONE) {
 			if (lora_status == LW_RX) {
@@ -270,6 +289,7 @@ void clear_lora_pending_message() {
 				leave = 0;
 			}
 		}
+		println("Done");
 	}
 }
 
@@ -295,7 +315,7 @@ void init_at_command() {
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+KEY=NWKSKEY,\"%s\"\r\n", NWK_SK);
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+KEY=APPSKEY,\"%s\"\r\n", APP_SK);
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+MODE=LWABP\r\n");
-	sprintf((char *) lora_config[cfg++].at_cmd, "AT+CLASS=C\r\n");
+	sprintf((char *) lora_config[cfg++].at_cmd, "AT+CLASS=A\r\n");
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+UART=TIMEOUT, 1000\r\n");
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+LW=DC\r\n");
 	sprintf((char *) lora_config[cfg++].at_cmd, "AT+LW=SCR, OFF\r\n");

@@ -25,11 +25,11 @@ static dwt_config_t config [4] = {
 	},
 	{
 		2,               // Channel number.
-		DWT_PRF_64M,     // Pulse repetition frequency.
+		DWT_PRF_16M,     // Pulse repetition frequency.
 		DWT_PLEN_1024, //DWT_PLEN_128,   // Preamble length. Used in TX only.
 		DWT_PAC16, //DWT_PAC8,       // Preamble acquisition chunk size. Used in RX only.
-		9,               // TX preamble code. Used in TX only.
-		9,               // RX preamble code. Used in RX only.
+		3,               // TX preamble code. Used in TX only.
+		3,               // RX preamble code. Used in RX only.
 		0,               // 0 to use standard SFD, 1 to use non-standard SFD.
 		DWT_BR_6M8,     // Data rate.
 		DWT_PHRMODE_STD, // PHY header mode.
@@ -79,6 +79,14 @@ static dev_cfg_t dev_cfg[NB_CALIB] = {
 		{
 				0x11DE,
 				16444
+		},
+		{
+				0x1813,
+				16429
+		},
+		{
+				0x11B6,
+				16439
 		}
 };
 
@@ -94,8 +102,6 @@ void init_config(int role, int dataRate, int init) {
 	char debug[30];
 	irq_status = IRQ_NONE;
 	device.role = (uint8) role;
-	//device.add = 0;
-	//device.id = device.add & 0x03;
 
 	device.config = config[(dataRate == DWT_BR_110K) ? 0 : 1];
 
@@ -118,6 +124,10 @@ void init_config(int role, int dataRate, int init) {
 			println("DWT_DEVICE_ID Failed");
 			Sleep(5000);
 			hardreset_DW1000();
+			devID = dwt_readdevid() ;
+			sprintf(debug, "%04X", devID);
+			println(debug);
+			//put_dev_to_sleep();
 
 		}
 		dwt_softreset();
@@ -128,7 +138,7 @@ void init_config(int role, int dataRate, int init) {
 
 	if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
 	{
-		println("Initialization Failed");
+		println("Initialization Failed, abandon");
 		while (1)
 		{ };
 	}
@@ -147,9 +157,9 @@ void init_config(int role, int dataRate, int init) {
 
 	// Configure the interruptions
 	set_interrupt();
-	Sleep(2);
+	//Sleep(2);
 	port_EnableEXT_IRQ();
-	Sleep(2);
+	//Sleep(2);
 	set_local_config();
 	if (init == 1) {
 		sprintf(debug, " - ant delay: %d", device.ant_dly);
@@ -203,7 +213,7 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
     int margin = 3000; //2000 symbols
     int ifs;
     int respframe = 0, finalframe = 0, wuframe = 0, respframe_sy = 0, pollframe_sy = 0, finalframe_sy = 0, wuframe_sy = 0, sfdlen = 0;
-	float msgdatalen_resp = 0, msgdatalen_poll = 0, msgdatalen_final = 0, msgdatalen_wu = 0, preamblelen = 0;
+	float msgdatalen_resp = 0, msgdatalen_poll = 0, msgdatalen_final = 0, msgdatalen_wu = 0, preamblelen = 0, msg_corpse = 0;
 
 	msgdatalen_resp = calculate_length_data(RESP_MSG_LEN, config->dataRate);
 	msgdatalen_poll = calculate_length_data(POLL_MSG_LEN, config->dataRate);
@@ -231,14 +241,17 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 
 	if(config->prf == DWT_PRF_16M) {
 		preamblelen = (sfdlen + preamblelen) * 0.99359f;
+		msg_corpse = sfdlen * 0.99359f;
 	} else {
 		preamblelen = (sfdlen + preamblelen) * 1.01763f;
+		msg_corpse = sfdlen * 1.01763f;
 	}
 
 	respframe_sy = (DW_RX_ON_DELAY + (int)((preamblelen + ((msgdatalen_resp + margin)/1000.0))/ 1.0256)) ;
 	pollframe_sy = (DW_RX_ON_DELAY + (int)((preamblelen + ((msgdatalen_poll + margin)/1000.0))/ 1.0256)) ;
 	finalframe_sy = (DW_RX_ON_DELAY + (int)((preamblelen + ((msgdatalen_final + margin)/1000.0))/ 1.0256)) ;
 	wuframe_sy = (DW_RX_ON_DELAY + (int)((preamblelen + ((msgdatalen_wu + margin)/1000.0))/ 1.0256));
+	msg_corpse = msg_corpse + (int)((msgdatalen_wu / 1000) / 1.0256);
 
 	respframe = (int)(preamblelen + (msgdatalen_resp/1000.0)); //length of response frame (micro seconds)
 	finalframe = (int)(preamblelen + (msgdatalen_final/1000.0));
@@ -247,21 +260,26 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 	if(config->dataRate == DWT_BR_110K)	{
 		delay_config->fwtoTime_sy = finalframe_sy + RX_RESPONSE_TURNAROUND + 400; //add some margin because of the resp to resp RX turn on time
 		delay_config->preambleDuration32h = (uint32) (((uint64) convert_usec_to_devtimeu (preamblelen)) >> 8) + DW_RX_ON_DELAY; //preamble duration + 16 us for RX on
+		msg_corpse += 172.308;
 	} else {
 		delay_config->fwtoTime_sy = finalframe_sy + RX_RESPONSE_TURNAROUND; //add some margin because of the resp to resp RX turn on time
 		delay_config->preambleDuration32h = (uint32) (((uint64) convert_usec_to_devtimeu (preamblelen)) >> 8) + DW_RX_ON_DELAY; //preamble duration + 16 us for RX on
+		msg_corpse += 21.539;
 	}
 	delay_config->tagRespRxDelay_sy = RX_RESPONSE_TURNAROUND + respframe_sy - pollframe_sy;
 	delay_config->fixedReplyDelayAnc32h = ((uint64)convert_usec_to_devtimeu (respframe + RX_RESPONSE_TURNAROUND) >> 8);
 
 
-	delay_config->pollTx2FinalTxDelay = ((uint64)convert_usec_to_devtimeu (4 * (respframe + RX_RESPONSE_TURNAROUND) + finalframe + RX_RESPONSE_TURNAROUND) >> 8);
+	delay_config->pollTx2FinalTxDelay = ((uint64)convert_usec_to_devtimeu (4 * (respframe + RX_RESPONSE_TURNAROUND) + finalframe + RX_RESPONSE_TURNAROUND * 2) >> 8);
 	delay_config->fwto4RespFrame_sy = respframe_sy;
 	delay_config->wuFrameTime_sy = wuframe_sy + ifs;
-	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 200) * 1e3) / delay_config->wuFrameTime_sy + 1;
+	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 2500) * 1e3) / delay_config->wuFrameTime_sy + 1;
 	delay_config->respFrame = respframe;
 	char debug[50];
-	/*sprintf(debug, "tagRespRx : %d", delay_config->tagRespRxDelay_sy);
+	/*sprintf(debug, "msg corpse: %f", msg_corpse);
+	println(debug);
+	msg_corpse = (((uint64) convert_usec_to_devtimeu (msg_corpse)) >> 8);
+	sprintf(debug, "tagRespRx : %d", delay_config->tagRespRxDelay_sy);
 	println(debug);
 	sprintf(debug, "replyDelay: %d", respframe + RX_RESPONSE_TURNAROUND);
 	println(debug);
@@ -283,7 +301,7 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 }
 
 void calibrate_antenna_delay(double dist) {
-	double threshold = 0.9;
+	double threshold = 1.04;
 	uint8 change_ant_dly = 0;
 	char debug[30];
 	if (dist < threshold - 0.10) {
@@ -405,8 +423,10 @@ void set_local_config () {
     char debug[30];
     devId = _dwt_otpread(PARTID_ADDRESS);
     device.add = devId & 0xFFFF;
-    //device.add = device.add & 0xFFFC;
-    //device.add = device.add | TEST_ADD;
+    if (device.role == ANCHOR) {
+        //device.add = device.add & 0xFFFC;
+        //device.add = device.add | TEST_ADD;
+    }
     device.id = device.add & 0x03;
     for (int i = 0; i < NB_CALIB; i++) {
     	if ((devId & 0xFFFF) == dev_cfg[i].devId) {
@@ -420,47 +440,25 @@ void set_local_config () {
 	dwt_settxantennadelay(device.ant_dly);
 }
 
-/*void wake_up_dev() {
-	if (dwt_spicswakeup(dummy_buffer, DUMMY_BUFFER_LEN) == DWT_SUCCESS) {
-		lpl_status = AWAKE;
-		dwt_setinterrupt(0xFFFFFFFF, 0);
-		//NVIC_DisableIRQ(EXTI0_IRQn);
-		dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
-		//NVIC_EnableIRQ(EXTI0_IRQn);
-		dwt_setrxtimeout(0);
-		dwt_setpreambledetecttimeout(PRE_TIMEOUT);
-		dwt_setrxantennadelay(device.ant_dly);
-		dwt_settxantennadelay(device.ant_dly);
-		if (dwt_readdevid() == DWT_DEVICE_ID) {
-			println("a");
-		} else {
-			println("z");
-		}
-		set_ranging_exchange_config();
-
-		//dwt_rxenable(DWT_START_RX_IMMEDIATE);
-	} else {
-		println("wake up failed : SOMETHING TO DO");
-	}
-}*/
 
 void put_dev_to_sleep() {
 	uint32 lp_osc_freq, sleep_cnt;
 	set_lowpowerlistening_config();
-
+	dwt_forcetrxoff();
+	dwt_rxreset();
+	port_DisableEXT_IRQ();
 	port_set_dw1000_slowrate();
 	lp_osc_freq = (XTAL_FREQ_HZ / 2) / dwt_calibratesleepcnt();
-	sleep_cnt = ((LONG_SLEEP_TIME_MS / 2 * lp_osc_freq) / 1000) >> 12;
+	sleep_cnt = ((1500 / 2 * lp_osc_freq) / 1000) >> 12;
 	dwt_configuresleepcnt(sleep_cnt);
 	port_set_dw1000_fastrate();
-	port_DisableEXT_IRQ();
 	dwt_setinterrupt(0xFFFFFFFF, 0);
 	Sleep(5);
 	dwt_setinterrupt(DWT_INT_RFCG, 1);
     dwt_configuresleep(DWT_PRESRV_SLEEP | DWT_CONFIG | DWT_RX_EN, DWT_WAKE_SLPCNT | DWT_SLP_EN);
     port_EnableEXT_IRQ();
 	dwt_setsnoozetime(LPL_SHORT_SLEEP_SNOOZE_TIME);
-	dwt_setpreambledetecttimeout(LPL_RX_SNIFF_TIME + 6);
+	dwt_setpreambledetecttimeout(LPL_RX_SNIFF_TIME);
 	dwt_setlowpowerlistening(1);
 	lpl_status = ASLEEP;
 	dwt_entersleep();
@@ -469,7 +467,7 @@ void put_dev_to_sleep() {
 	if (devID == DWT_DEVICE_ID) {
 		println("!!!!!! SLEEP FAILED !!!!!!");
 	} else {
-		println("[STM32] Put to sleep\r\n");
+		//println("[STM32] Put to sleep\r\n");
 
 		HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_0);
 		HAL_PWREx_EnablePullUpPullDownConfig();
@@ -481,94 +479,8 @@ void put_dev_to_sleep() {
 		HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
 
 		HAL_PWR_EnterSTANDBYMode();
-		//put_stm32_to_stop_mode();
 	}
 }
-static void SYSCLKConfig_STOP(void)
-{
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  uint32_t pFLatency = 0;
-
-  /* Enable Power Control clock */
-  __HAL_RCC_PWR_CLK_ENABLE();
-
-  /* Get the Oscillators configuration according to the internal RCC registers */
-  HAL_RCC_GetOscConfig(&RCC_OscInitStruct);
-
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_NONE;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /* Get the Clocks configuration according to the internal RCC registers */
-  HAL_RCC_GetClockConfig(&RCC_ClkInitStruct, &pFLatency);
-
-  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2
-     clocks dividers */
-  RCC_ClkInitStruct.ClockType     = RCC_CLOCKTYPE_SYSCLK;
-  RCC_ClkInitStruct.SYSCLKSource  = RCC_SYSCLKSOURCE_PLLCLK;
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, pFLatency) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-/*void put_stm32_to_stop_mode() {
-	GPIO_InitTypeDef GPIO_InitStruct;
-
-	HAL_PWR_DisableWakeUpPin(PWR_WAKEUP_PIN1);
-
-	__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
-
-	HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
-
-	__HAL_RCC_PWR_CLK_ENABLE();
-
-	__HAL_RCC_WAKEUPSTOP_CLK_CONFIG(RCC_STOP_WAKEUPCLOCK_MSI);
-
-	__HAL_RCC_GPIOA_CLK_ENABLE();
-	__HAL_RCC_GPIOB_CLK_ENABLE();
-	__HAL_RCC_GPIOD_CLK_ENABLE();
-	__HAL_RCC_GPIOE_CLK_ENABLE();
-	__HAL_RCC_GPIOF_CLK_ENABLE();
-	__HAL_RCC_GPIOG_CLK_ENABLE();
-	__HAL_RCC_GPIOH_CLK_ENABLE();
-
-	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Pin = (~GPIO_PIN_0) & GPIO_PIN_All;
-
-	char debug[50];
-	sprintf(debug, "%04X", (~GPIO_PIN_0) & GPIO_PIN_All);
-	println(debug);
-
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	GPIO_InitStruct.Pin = GPIO_PIN_All;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-	HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-	HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
-	HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-	HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
-
-	__HAL_RCC_GPIOA_CLK_DISABLE();
-	__HAL_RCC_GPIOB_CLK_DISABLE();
-	__HAL_RCC_GPIOD_CLK_DISABLE();
-	__HAL_RCC_GPIOE_CLK_DISABLE();
-	__HAL_RCC_GPIOF_CLK_DISABLE();
-	__HAL_RCC_GPIOG_CLK_DISABLE();
-	__HAL_RCC_GPIOH_CLK_DISABLE();
-	println("enter sleep mode");
-	HAL_PWREx_EnterSTOP1Mode(PWR_STOPENTRY_WFI);
-
-    SYSCLKConfig_STOP();
-    println("exit sleep mode");
-}*/
 
 void hardreset_DW1000() {
 	HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_RESET);

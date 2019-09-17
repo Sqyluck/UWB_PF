@@ -94,14 +94,11 @@ typedef struct {
 } dw_device_t;
 
 
-#define NB_CALIB 4
+#define NB_CALIB 6
 typedef struct {
 	uint16 devId;
 	uint16 ant_dly;
 }dev_cfg_t;
-
-
-
 
 /* Declaration of interrupt callback */
 #define IRQ_TX_OK  0x01

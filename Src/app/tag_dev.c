@@ -36,6 +36,8 @@ static uint8 resp_msg[] = {0x03, 0x04, 0, 0xCA, 0xDE, 'V', 'E', 'W', 'A', 0x10, 
 static uint8 final_msg[] = {0x05, 0x06, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0x23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8 wus_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'X', 'T', 'X', 'R', 0xE1, 0, 0, 0, 0};
 
+static int wu_ok[4] = {0, 0, 0, 0};
+
 /*! ------------------------------------------------------------------------------------------------------------------
  * @fn main()
  *
@@ -48,7 +50,7 @@ static uint8 wus_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'X', 'T', 'X', 'R', 0xE1, 0
 #define RXBUFFERSIZE 30
 uint8 aRxBuffer[RXBUFFERSIZE];
 static int nb_try = 0;
-
+#define LORA 1
 int tag_dev(void) {
 	dw_device_t * dev = get_device();
 	char debug[50];
@@ -73,9 +75,9 @@ int tag_dev(void) {
 			case ASK_SERVER:
 				nb_try = 0;
 				serverOk = 0;
-#if CALIBRATE
-				//state = WAKE_UP_ANCHOR;
-				state = SEND_POLL;
+#if !LORA
+				state = WAKE_UP_ANCHOR;
+				//state = SEND_POLL;
 #else
 				ret = send_cmsghex_lora(askmsg, 3);
 				if (ret == 1) {
@@ -117,13 +119,14 @@ int tag_dev(void) {
 					start = get_systime_ms();
 					println("\r\n[-wake up sequence started-]");
 				}
-				if (frame_counter == 0) {
+
+				state = send_wu_frames(frame_counter--);
+				//if (frame_counter == 0) {
 					end = get_systime_ms();
 					set_ranging_exchange_config();
 					sprintf(debug, " -wake up duration: %.2fms-", (end > start) ? (end - start) : (end + 17207 - start));
 					println(debug);
-				}
-				state = send_wu_frames(frame_counter--);
+				//}
 				break;
 
 			case SEND_POLL:
@@ -177,7 +180,6 @@ int tag_dev(void) {
 				if (ret == DWT_SUCCESS)
 				{
 					state = WAIT_FINAL_TX_CONF;
-					frame_seq_nb++;
 				} else {
 					println("can't send final");
 					state = WAIT_NEXT_RANGING;
@@ -198,7 +200,7 @@ int tag_dev(void) {
 					sample = 0;
 					state = WAIT_NEXT_RANGING;
 				} else {
-					Sleep(5);
+					Sleep(10);
 					state = SEND_POLL;
 				}
 				break;
@@ -216,14 +218,15 @@ int tag_dev(void) {
 				frame_counter = dev->delay.wuFrame_nb; //WUS_FRAME_NB
 #endif
 				state = ASK_SERVER;
-				random_wait_time = 2000; //WAIT_TIME + 1000 * (((int)get_systime_ms()) % 10);
+				random_wait_time = WAIT_TIME + 1000 * (((int)get_systime_ms()) % 5);
 				if (end < start) {
 					end = end + 17207 - start;
 				} else {
 					end = end - start;
 				}
-				sprintf(debug, "[UWB] --- Ranging exchange finished [duration: %fms] ----", end);
+				sprintf(debug, "[UWB] --- Ranging exchange [%d] finished [duration: %fms] ----", frame_seq_nb, end);
 				println(debug);
+				frame_seq_nb++;
 				Sleep(random_wait_time);
 				serverOk = 0;
 				break;
@@ -232,12 +235,30 @@ int tag_dev(void) {
 }
 
 uint8 check_server_resp() {
+
+	if (wait_lora_status(LW_RX, LORA_TIMEOUT)) {
+		println("[LORA] --- Server answered");
+		disable_loraIRQ();
+#if LPL_MODE
+		return WAKE_UP_ANCHOR;
+#else
+		return SEND_POLL;
+#endif
+	} else {
+		//clear_lora_pending_message();
+		send_str_lora("AT+MSG\r\n");
+		Sleep(5000);
+		println("NO RX, TRY AGAIN");
+		return ASK_SERVER;
+	}
+
+	/*
 	char debug[30];
 	uint8 state = WAIT_SERVER_RESP;
 	int timeout;
 	int rx = 0, ack = 0;
-	if (wait_lora_status(LW_ACK, LORA_TIMEOUT)) {
-		if (wait_lora_status(LW_DONE, LORA_TIMEOUT)) {
+	if (wait_lora_status(LW_ACK, 15)) {
+		if (wait_lora_status(LW_DONE, 5)) {
 			if (wait_lora_status(LW_RX, LORA_TIMEOUT)) {
 				println("[LORA] --- Server answered");
 				disable_loraIRQ();
@@ -257,28 +278,32 @@ uint8 check_server_resp() {
 	} else {
 		println("NO ACK, TRY AGAIN");
 		return ASK_SERVER;
-	}
+	}*/
 }
 
 uint8 send_wu_frames(uint16 frame_counter) {
-	if (frame_counter == 0) {
-		println("[-wake up sequence finished-]");
-		Sleep(50);
-		return SEND_POLL;
+
+	while (frame_counter--) {
+		wus_msg[WU_MSG_CNTDWN_IDX] = frame_counter & 0xFF;
+		wus_msg[WU_MSG_CNTDWN_IDX + 1] = frame_counter >> 8;
+
+		dwt_writetxdata(sizeof(wus_msg), wus_msg, 0); /* Zero offset in TX buffer. */
+		dwt_writetxfctrl(sizeof(wus_msg), 0, 0); /* Zero offset in TX buffer, no ranging. */
+
+		dwt_starttx(DWT_START_TX_IMMEDIATE);
+		while(irq_status != IRQ_TX_OK)
+		{ };
+		irq_status = IRQ_NONE;
 	}
-	wus_msg[WU_MSG_CNTDWN_IDX] = frame_counter & 0xFF;
-	wus_msg[WU_MSG_CNTDWN_IDX + 1] = frame_counter >> 8;
+	//if (frame_counter == 0) {
+	println("[-wake up sequence finished-]");
+	Sleep(50);
+	return SEND_POLL;
+	//}
 
-	dwt_writetxdata(sizeof(wus_msg), wus_msg, 0); /* Zero offset in TX buffer. */
-	dwt_writetxfctrl(sizeof(wus_msg), 0, 0); /* Zero offset in TX buffer, no ranging. */
 
-	dwt_starttx(DWT_START_TX_IMMEDIATE);
-	while(irq_status != IRQ_TX_OK)
-	{ };
-	irq_status = IRQ_NONE;
-
-	wus_msg[ALL_MSG_SN_IDX]++;
-	return WAKE_UP_ANCHOR;
+	//wus_msg[ALL_MSG_SN_IDX]++;
+	//return WAKE_UP_ANCHOR;
 }
 
 void init_and_send_poll() {
@@ -294,25 +319,22 @@ void init_and_send_poll() {
 	dwt_setpreambledetecttimeout(PRE_TIMEOUT);
 	dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 }
-
 uint8 read_response() {
 	char debug[50];
 	dw_device_t * dev = get_device();
 	uint16 anch_address;
 	uint8 final_msg_resp_pos, anch_id;
-	frame_seq_nb++;
 
 	if (irq_status == IRQ_RX_OK) {
 		anch_address = (rx_buffer[7] << 8 | rx_buffer[8]);
 		anch_id = anch_address & 0x03;
-		if (is_ranging_anchor(anch_address)) {
+		if (is_ranging_anchor(anch_address) == 1) {
 			rx_buffer[ALL_MSG_SN_IDX] = 0;
 			if (memcmp(rx_buffer, resp_msg, ALL_MSG_COMMON_LEN) == 0) {
 				final_msg_resp_pos = 14 + 4 * anch_id;
 				if (sample == 0) {
-					resp_rx_ts = anch_address & 0x0000ffff;
-					final_msg_set_ts(&final_msg[final_msg_resp_pos], anch_address);
-					anch_dist[anch_id].address = anch_address;
+					final_msg_set_ts(&final_msg[final_msg_resp_pos], anch_dist[anch_id].address); //anch_address);
+					//anch_dist[anch_id].address = anch_address;
 				} else {
 					resp_rx_ts = get_rx_timestamp_u64();
 					final_msg_set_ts(&final_msg[final_msg_resp_pos], resp_rx_ts);
@@ -396,19 +418,20 @@ void send_result() {
 		sprintf(data + len + DIST, "%0*d", 6, dist_d);
 		len += ANCH_LEN;
 
-		sprintf(debug, "anch[%04X] : %2.3fm", anch_dist[i].address, (float)((float)dist_d / 1000.0));
+		sprintf(debug, "anch[%04X] : %2.3fm   [%d] %s", anch_dist[i].address, (float)((float)dist_d / 1000.0), total != 0 ? ++wu_ok[i] : wu_ok[i], total != 0 ? "+" : "-");
 		println(debug);
 		anch_dist[i].address = 0x0000;
 	}
-#if !CALIBRATE
+#if LORA
 	enable_loraIRQ();
 	int ret = 0;
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < 1; i++) {
 		ret = send_cmsghex_lora(data, len);
 		if(ret != 1) {
 			println("data not send");
 		} else {
-			if(wait_lora_status(LW_ACK, LORA_TIMEOUT)) {
+			//if(wait_lora_status(LW_ACK, LORA_TIMEOUT)) {
+			if(wait_lora_status(LW_DONE, LORA_TIMEOUT)) {
 				lora_status = LW_NONE;
 				return;
 			} else {

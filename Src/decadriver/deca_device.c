@@ -2168,7 +2168,13 @@ void dwt_isr(void)
 {
     uint32 status = pdw1000local->cbData.status = dwt_read32bitreg(SYS_STATUS_ID); // Read status register low 32bits
     char debug[30];
+    /*println("isr");
 
+    if (lpl_status == ASLEEP) {
+    	lpl_status = AWAKE;
+    	println("lo");
+    	dwt_setlowpowerlistening(0);
+    }*/
 
 	if (status == 0x02A00003) {
 		//print(".");

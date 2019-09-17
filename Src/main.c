@@ -120,7 +120,7 @@ int main(void)
 	if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
 		init = 0;
 		dwt_setlowpowerlistening(0);
-		//println("b");
+		println("b");
 		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
 	}
 
