@@ -228,9 +228,9 @@ int tag_dev(void) {
 #endif
 				state = ASK_SERVER;
 #if LORA
-				random_wait_time = WAIT_TIME + 1000 * (((int)get_systime_ms()) % 5);
+				random_wait_time = 1000; // WAIT_TIME + 1000 * (((int)get_systime_ms()) % 5);
 #else
-				random_wait_time = 5000;
+				random_wait_time = 2000;
 #endif
 				if (end < start) {
 					end = end + 17207 - start;

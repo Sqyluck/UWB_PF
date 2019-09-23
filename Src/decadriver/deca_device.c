@@ -2191,8 +2191,8 @@ void dwt_isr(void)
     {
     	 if (lpl_status == ASLEEP) {
 			lpl_status = AWAKE;
-			println("lo");
 			dwt_setlowpowerlistening(0);
+			println("lo");
 		}
         uint16 finfo16;
         uint16 len;
@@ -2778,6 +2778,7 @@ void dwt_setsniffmode(int enable, uint8 timeOn, uint8 timeOff)
 void dwt_setlowpowerlistening(int enable)
 {
     uint32 pmsc_reg = dwt_read32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET);
+    char debug[30];
     if (enable)
     {
         /* Configure RX to sleep and snooze features. */
@@ -2786,8 +2787,13 @@ void dwt_setlowpowerlistening(int enable)
     else
     {
         /* Reset RX to sleep and snooze features. */
+    	sprintf(debug, "1- %08X ", pmsc_reg);
+		println(debug);
         pmsc_reg &= ~(PMSC_CTRL1_ARXSLP | PMSC_CTRL1_SNOZE);
+        sprintf(debug, "2- %08X ", pmsc_reg);
+		println(debug);
     }
+
     dwt_write32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET, pmsc_reg);
 }
 

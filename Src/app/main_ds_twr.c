@@ -34,7 +34,7 @@ int main_ds_twr (int init) {
 		role = ANCHOR;
 	}
 #else
-	if ((partid &0xffff) == 0x11D5) {
+	if ((partid &0xffff) == 0x11B6) {
 		role = TAG;
 	} else {
 		role = ANCHOR;

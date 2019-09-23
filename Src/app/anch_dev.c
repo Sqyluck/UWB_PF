@@ -9,7 +9,7 @@
 extern double dwt_getrangebias(uint8 chan, float range, uint8 prf);
 typedef signed long long int64;
 
-#define ANCH_DEBUG 2
+#define ANCH_DEBUG 0
 
 #if LPL_MODE
 static uint8 state = WAIT_WAKE_UP;
@@ -69,13 +69,16 @@ int anch_dev(int init) {
     					println("don't reenable rx");
     				}
     			} else {
-        			/*if (check_timeout(LONG_SLEEP_TIME_MS + 25000) == 0) {
-        				println("******************");
-        				println("**--WU TIMEOUT--**");
-        				println("******************");
-        				timeout = -1;
-        				state = PUT_TO_SLEEP;
-        			}*/
+        			if (lpl_status == AWAKE) {
+        				if (check_timeout(LONG_SLEEP_TIME_MS + 5000) == 0) {
+        					println("******************");
+							println("**--WU TIMEOUT--**");
+							println("******************");
+							timeout = -1;
+							state = PUT_TO_SLEEP;
+        				}
+        			}
+
     			}
     			break;
     		case WAIT_POLL:
@@ -153,8 +156,8 @@ int anch_dev(int init) {
 uint8 wake_up() {
     if (irq_status == IRQ_RX_OK) {
     	rx_buffer[ALL_MSG_SN_IDX] = 0;
+		dw_device_t * dev = get_device();
 		if (memcmp(rx_buffer, wus_msg, ALL_MSG_COMMON_LEN) == 0) {
-			dw_device_t * dev = get_device();
 			uint16 wus_end_frame_nb;
 			uint32 wus_end_time_ms;
 
@@ -173,7 +176,7 @@ uint8 wake_up() {
 			//dwt_entersleep();
 
 			// Wait and wake up the device
-			Sleep(wus_end_time_ms);
+			Sleep(wus_end_time_ms + 50);
 #if ANCH_DEBUG
 			sleep_time = wus_end_time_ms;
 #endif
@@ -201,7 +204,13 @@ uint8 wake_up() {
 
 		if (memcmp(rx_buffer, poll_msg, ALL_MSG_COMMON_LEN) == 0) {
 			// A OPTIMISER
-			println("-> direct poll -> sleep");
+			dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
+
+			dwt_setrxantennadelay(dev->ant_dly);
+			dwt_settxantennadelay(dev->ant_dly);
+			println("********************");
+			println("**--DIRECT POLL--**");
+			println("********************");
 			return prepare_resp();
 		}
     } else if (irq_status == IRQ_RX_ERR) {
@@ -389,7 +398,7 @@ void rx_ok_anch(const dwt_cb_data_t *cb_data) {
 			//println("wu");
 			lpl_status = AWAKE;
 		} else {
-			//print("m");
+			//print("w");
 		}
 	    irq_status = IRQ_RX_OK;
     } else {
