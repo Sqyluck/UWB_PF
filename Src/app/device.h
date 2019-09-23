@@ -15,7 +15,7 @@
 #define ANCHOR 1
 #define LPL_MODE 1
 #define CALIBRATE 0
-#define LORA 0
+#define LORA 1
 #define STAND_BY 0
 #define SWITCH_CONFIG 0
 

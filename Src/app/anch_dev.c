@@ -62,7 +62,12 @@ int anch_dev(int init) {
     				timeout = -1;
     				state = wake_up();
     				irq_status = IRQ_NONE;
-					rx_reenable_no_timeout();
+    				if (state != SEND_RESP) {
+    					rx_reenable_no_timeout();
+    					// break;
+    				} else {
+    					println("don't reenable rx");
+    				}
     			} else {
         			/*if (check_timeout(LONG_SLEEP_TIME_MS + 25000) == 0) {
         				println("******************");
@@ -197,7 +202,7 @@ uint8 wake_up() {
 		if (memcmp(rx_buffer, poll_msg, ALL_MSG_COMMON_LEN) == 0) {
 			// A OPTIMISER
 			println("-> direct poll -> sleep");
-			return PUT_TO_SLEEP; //prepare_resp();
+			return prepare_resp();
 		}
     } else if (irq_status == IRQ_RX_ERR) {
 		println("wu err");

@@ -291,7 +291,7 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 	delay_config->pollTx2FinalTxDelay = ((uint64)convert_usec_to_devtimeu (4 * (respframe + RX_RESPONSE_TURNAROUND) + finalframe + RX_RESPONSE_TURNAROUND * 2) >> 8);
 	delay_config->fwto4RespFrame_sy = respframe_sy;
 	delay_config->wuFrameTime_sy = wuframe_sy + ifs;
-	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 200) * 1e3) / delay_config->wuFrameTime_sy + 1;
+	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 500) * 1e3) / delay_config->wuFrameTime_sy + 1;
 	delay_config->respFrame = respframe;
 	char debug[50];
 	/*sprintf(debug, "msg corpse: %f", msg_corpse);

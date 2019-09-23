@@ -2179,12 +2179,6 @@ void dwt_isr(void)
     	return;
     }
 
-    if (lpl_status == ASLEEP) {
-    	lpl_status = AWAKE;
-    	println("lo");
-    	dwt_setlowpowerlistening(0);
-    }
-
 	/*if (status == 0x02A00003) {
 		print(".");
 		dwt_write32bitreg(SYS_STATUS_ID, 0x02000000);
@@ -2195,6 +2189,11 @@ void dwt_isr(void)
 
     if(status & SYS_STATUS_RXFCG)
     {
+    	 if (lpl_status == ASLEEP) {
+			lpl_status = AWAKE;
+			println("lo");
+			dwt_setlowpowerlistening(0);
+		}
         uint16 finfo16;
         uint16 len;
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD); // Clear all receive status bits
