@@ -333,8 +333,8 @@ int dw_main(void)
     uint8 address[3] = { 0, 0, 0 };
     uint8 mode = ANCHOR; //TAG;
     uint8 channel = 2;
-    uint8 dataRate = 0;
-    s1switch = dataRate << 1           		   // dataRate: 6M8 / 110k
+    uint8 dataRate = 1;
+    s1switch = dataRate << 1          		   // dataRate: 6M8 / 110k
         		| (channel == 2 ? 0 : 1) << 2  // Channel: 2 / 5
         		| (mode) << 3                    // Mode: Anch / Tag
         		| address[2] << 4              // address 1

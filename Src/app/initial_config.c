@@ -37,26 +37,27 @@ static dwt_config_t config [4] = {
 	}, {
 		2,               // Channel number.
 		DWT_PRF_64M,     // Pulse repetition frequency.
-		DWT_PLEN_256, //DWT_PLEN_128,   // Preamble length. Used in TX only.
-		DWT_PAC16, //DWT_PAC8,       // Preamble acquisition chunk size. Used in RX only.
+		DWT_PLEN_256,    //DWT_PLEN_128,   // Preamble length. Used in TX only.
+		DWT_PAC16, 		 //DWT_PAC8,       // Preamble acquisition chunk size. Used in RX only.
 		9,               // TX preamble code. Used in TX only.
 		9,               // RX preamble code. Used in RX only.
 		0,               // 0 to use standard SFD, 1 to use non-standard SFD.
 		DWT_BR_6M8,     // Data rate.
 		DWT_PHRMODE_STD, // PHY header mode.
 		(256 + 1 + 8 - 16) //(128 + 1 + 8 - 8) // SFD timeout (preamble length + 1 + SFD length - PAC size)
-	}, {
-		2,               // Channel number.
-		DWT_PRF_16M,     // Pulse repetition frequency.
-		DWT_PLEN_128, //DWT_PLEN_128,   // Preamble length. Used in TX only.
-		DWT_PAC8, //DWT_PAC8,       // Preamble acquisition chunk size. Used in RX only.
-		4,               // TX preamble code. Used in TX only.
-		4,               // RX preamble code. Used in RX only.
-		0,               // 0 to use standard SFD, 1 to use non-standard SFD.
-		DWT_BR_6M8,     // Data rate.
-		DWT_PHRMODE_STD, // PHY header mode.
-		(128 + 1 + 8 - 8) //(128 + 1 + 8 - 8) // SFD timeout (preamble length + 1 + SFD length - PAC size)
+	}, 	{
+		2,            // channel
+		DWT_PRF_16M,   // prf
+		DWT_PLEN_128,
+		DWT_PAC8,
+		4,
+		4,
+		0,
+		DWT_BR_6M8,
+		DWT_PHRMODE_STD,
+		(129 + 8 - 8)
 	}
+
 };
 
 static uint32 txPower[16] = { 0x00000000, 0x67676767, 0x67676767, 0x8B8B8B8B, 0x9A9A9A9A, 0x85858585, 0x00000000 ,0xD1D1D1D1,
@@ -103,7 +104,11 @@ void init_config(int role, int dataRate, int init) {
 	irq_status = IRQ_NONE;
 	device.role = (uint8) role;
 
+#if LPL_MODE
 	device.config = config[(dataRate == DWT_BR_110K) ? 0 : 1];
+#else
+	device.config = config[(dataRate == DWT_BR_110K) ? 0 : 2];
+#endif
 
 	if (dataRate == DWT_BR_6M8) {
 		smart_power = 1;
@@ -116,7 +121,8 @@ void init_config(int role, int dataRate, int init) {
 	devID = dwt_readdevid() ;
 	if(DWT_DEVICE_ID != devID) {
 		println("*******NEED WAKE UP*********");
-		port_wakeup_dw1000();
+		//port_wakeup_dw1000();
+		port_wakeup_dw1000_fast();
 
 		devID = dwt_readdevid() ;
 		// SPI not working or Unsupported Device ID
@@ -139,10 +145,14 @@ void init_config(int role, int dataRate, int init) {
 	if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
 	{
 		println("Initialization Failed, abandon");
+		NVIC_SystemReset();
 		while (1)
 		{ };
 	}
 	port_set_dw1000_fastrate();
+#if !STAND_BY
+	setup_DW1000RSTnIRQ(0);
+#endif
 
 	// Initialize main delays for the TWR
 	set_delays(&device.config, &device.delay);
@@ -157,9 +167,7 @@ void init_config(int role, int dataRate, int init) {
 
 	// Configure the interruptions
 	set_interrupt();
-	//Sleep(2);
 	port_EnableEXT_IRQ();
-	//Sleep(2);
 	set_local_config();
 	if (init == 1) {
 		sprintf(debug, " - ant delay: %d", device.ant_dly);
@@ -207,6 +215,16 @@ float calculate_length_data(float msgdatalen, uint8 dataRate) {
 		msgdatalen += 21539; // PHR length in nanoseconds
 	}
 	return msgdatalen ;
+}
+
+void set_RFconfiguration() {
+	int smart_power = 0;
+	if (device.config.dataRate == DWT_BR_6M8) {
+		smart_power = 1;
+	}
+	txconfig.power = txPower[8 * smart_power + device.config.chan];
+	txconfig.PGdly = PGdelay[device.config.chan];
+	dwt_configuretxrf(&txconfig);
 }
 
 void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
@@ -273,7 +291,7 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 	delay_config->pollTx2FinalTxDelay = ((uint64)convert_usec_to_devtimeu (4 * (respframe + RX_RESPONSE_TURNAROUND) + finalframe + RX_RESPONSE_TURNAROUND * 2) >> 8);
 	delay_config->fwto4RespFrame_sy = respframe_sy;
 	delay_config->wuFrameTime_sy = wuframe_sy + ifs;
-	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 2500) * 1e3) / delay_config->wuFrameTime_sy + 1;
+	delay_config->wuFrame_nb = ((LONG_SLEEP_TIME_MS + 200) * 1e3) / delay_config->wuFrameTime_sy + 1;
 	delay_config->respFrame = respframe;
 	char debug[50];
 	/*sprintf(debug, "msg corpse: %f", msg_corpse);
@@ -340,6 +358,7 @@ void calibrate_antenna_delay(double dist) {
 }
 
 void set_ranging_exchange_config() {
+#if SWITCH_CONFIG
 	dwt_forcetrxoff();
 	dwt_rxreset();
 	if (device.config.dataRate == DWT_BR_6M8) {
@@ -349,10 +368,11 @@ void set_ranging_exchange_config() {
 	}
 	set_delays(&device.config, &device.delay);
 	dwt_configure(&device.config);
-
+#endif
 }
 
 void set_lowpowerlistening_config() {
+#if SWITCH_CONFIG
 	dwt_forcetrxoff();
 	dwt_rxreset();
 	if (device.config.dataRate == DWT_BR_6M8) {
@@ -362,6 +382,7 @@ void set_lowpowerlistening_config() {
 	}
 	set_delays(&device.config, &device.delay);
 	dwt_configure(&device.config);
+#endif
 }
 
 void set_interrupt() {
@@ -443,32 +464,41 @@ void set_local_config () {
 
 void put_dev_to_sleep() {
 	uint32 lp_osc_freq, sleep_cnt;
+
 	set_lowpowerlistening_config();
+
 	dwt_forcetrxoff();
 	dwt_rxreset();
+	//setup_DW1000RSTnIRQ(1);
 	port_DisableEXT_IRQ();
+
 	port_set_dw1000_slowrate();
 	lp_osc_freq = (XTAL_FREQ_HZ / 2) / dwt_calibratesleepcnt();
 	sleep_cnt = ((1500 / 2 * lp_osc_freq) / 1000) >> 12;
 	dwt_configuresleepcnt(sleep_cnt);
 	port_set_dw1000_fastrate();
+
 	dwt_setinterrupt(0xFFFFFFFF, 0);
 	Sleep(5);
 	dwt_setinterrupt(DWT_INT_RFCG, 1);
     dwt_configuresleep(DWT_PRESRV_SLEEP | DWT_CONFIG | DWT_RX_EN, DWT_WAKE_SLPCNT | DWT_SLP_EN);
-    port_EnableEXT_IRQ();
 	dwt_setsnoozetime(LPL_SHORT_SLEEP_SNOOZE_TIME);
 	dwt_setpreambledetecttimeout(LPL_RX_SNIFF_TIME);
 	dwt_setlowpowerlistening(1);
+
 	lpl_status = ASLEEP;
+
+    port_EnableEXT_IRQ();
+
 	dwt_entersleep();
 
 	uint32 devID = dwt_readdevid();
 	if (devID == DWT_DEVICE_ID) {
 		println("!!!!!! SLEEP FAILED !!!!!!");
 	} else {
-		//println("[STM32] Put to sleep\r\n");
+		println("[STM32] Put to sleep\r\n");
 
+#if STAND_BY
 		HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_0);
 		HAL_PWREx_EnablePullUpPullDownConfig();
 
@@ -479,6 +509,9 @@ void put_dev_to_sleep() {
 		HAL_PWR_EnableWakeUpPin(PWR_WAKEUP_PIN1_HIGH);
 
 		HAL_PWR_EnterSTANDBYMode();
+#endif
+		//NVIC_SystemReset();
+		//while(1) {};
 	}
 }
 

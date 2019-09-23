@@ -12,7 +12,7 @@
 #include "device.h"
 #include "port.h"
 
-#define DEBUG 3
+#define DEBUG 1
 
 extern UART_HandleTypeDef huart1;
 

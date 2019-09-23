@@ -28,6 +28,7 @@ static uint64 resp_rx_ts;
 static uint64 final_tx_ts;
 
 static uint8 frame_seq_nb = 0;
+static int frame_seq_nb2 = 0;
 static int sample = 0;
 static uint8 ranging_anch = 0;
 
@@ -50,7 +51,6 @@ static int wu_ok[4] = {0, 0, 0, 0};
 #define RXBUFFERSIZE 30
 uint8 aRxBuffer[RXBUFFERSIZE];
 static int nb_try = 0;
-#define LORA 1
 int tag_dev(void) {
 	dw_device_t * dev = get_device();
 	char debug[50];
@@ -76,7 +76,11 @@ int tag_dev(void) {
 				nb_try = 0;
 				serverOk = 0;
 #if !LORA
+#if LPL_MODE
 				state = WAKE_UP_ANCHOR;
+#else
+				state = SEND_POLL;
+#endif
 				//state = SEND_POLL;
 #else
 				ret = send_cmsghex_lora(askmsg, 3);
@@ -200,7 +204,11 @@ int tag_dev(void) {
 					sample = 0;
 					state = WAIT_NEXT_RANGING;
 				} else {
-					Sleep(10);
+					if (dev->config.dataRate == DWT_BR_6M8) {
+						Sleep(20);
+					} else {
+						Sleep(10);
+					}
 					state = SEND_POLL;
 				}
 				break;
@@ -211,6 +219,7 @@ int tag_dev(void) {
 				state = ASK_SERVER;
 				serverOk = 0;
 				end = get_systime_ms();
+				frame_seq_nb2++;
 				send_result();
 				// clear_lora_pending_message();
 #if LPL_MODE
@@ -218,13 +227,17 @@ int tag_dev(void) {
 				frame_counter = dev->delay.wuFrame_nb; //WUS_FRAME_NB
 #endif
 				state = ASK_SERVER;
+#if LORA
 				random_wait_time = WAIT_TIME + 1000 * (((int)get_systime_ms()) % 5);
+#else
+				random_wait_time = 5000;
+#endif
 				if (end < start) {
 					end = end + 17207 - start;
 				} else {
 					end = end - start;
 				}
-				sprintf(debug, "[UWB] --- Ranging exchange [%d] finished [duration: %fms] ----", frame_seq_nb, end);
+				sprintf(debug, "[UWB] --- Ranging exchange [%d] finished [duration: %fms]----", frame_seq_nb2, end);
 				println(debug);
 				frame_seq_nb++;
 				Sleep(random_wait_time);
@@ -397,14 +410,16 @@ int is_ranging_anchor(uint16 address) {
 
 void send_result() {
 	dw_device_t * dev = get_device();
+	char debug[30];
 	uint8 data[35]; // = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	data[0] = dev->add >> 8;
 	data[1] = dev->add;
 	data[2] = 0x02;
 	uint dist_d = 0;
+	sprintf(debug, "%04X", dev->add);
+	println(debug);
 	float total = 0;
 	int len = 3;
-	char debug[30];
 	for (int i = 0; i < 4; i++) {
 		total = get_average_distance(i);
 		dist_d = (uint) (total * 1000) % 1000000;
@@ -418,11 +433,21 @@ void send_result() {
 		sprintf(data + len + DIST, "%0*d", 6, dist_d);
 		len += ANCH_LEN;
 
-		sprintf(debug, "anch[%04X] : %2.3fm   [%d] %s", anch_dist[i].address, (float)((float)dist_d / 1000.0), total != 0 ? ++wu_ok[i] : wu_ok[i], total != 0 ? "+" : "-");
+		sprintf(debug, "anch[%04X] : %2.3fm   [%d] %s (%d)",
+				anch_dist[i].address,
+				(float)((float)dist_d / 1000.0),
+				total != 0 ? ++wu_ok[i] : wu_ok[i],
+				total != 0 ? "+" : "-",
+				wu_ok[i] == frame_seq_nb2 ? 0 : wu_ok[i] - frame_seq_nb2);
 		println(debug);
 		anch_dist[i].address = 0x0000;
 	}
 #if LORA
+	for (int i = 0; i < 10; i++) {
+		sprintf(debug, "%02X ", data[i]);
+		print(debug);
+	}
+
 	enable_loraIRQ();
 	int ret = 0;
 	for (int i = 0; i < 1; i++) {

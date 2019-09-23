@@ -112,6 +112,8 @@ int main(void)
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
 	//dw_main();
+	//setup_DW1000RSTnIRQ(0);
+
 	int init = 1;
 	if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
 		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
@@ -119,7 +121,7 @@ int main(void)
 
 	if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
 		init = 0;
-		dwt_setlowpowerlistening(0);
+		//dwt_setlowpowerlistening(0);
 		println("b");
 		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
 	}
@@ -224,7 +226,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCPolynomial = 10;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
   hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
@@ -385,10 +387,10 @@ static void MX_GPIO_Init_Dev(void)
   HAL_GPIO_WritePin(DW_WUP_GPIO_Port, DW_WUP_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
+  /*GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);*/
 
   /*Configure GPIO pin : DW_RESET_Pin */
   GPIO_InitStruct.Pin = DW_RESET_Pin;

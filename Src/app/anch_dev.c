@@ -9,7 +9,7 @@
 extern double dwt_getrangebias(uint8 chan, float range, uint8 prf);
 typedef signed long long int64;
 
-#define ANCH_DEBUG 1
+#define ANCH_DEBUG 2
 
 #if LPL_MODE
 static uint8 state = WAIT_WAKE_UP;
@@ -31,9 +31,10 @@ static uint8 resp_msg[] = {0x03, 0x04, 0, 0xCA, 0xDE, 'V', 'E', 'W', 'A', 0x10, 
 static uint8 final_msg[] = {0x05, 0x06, 0, 0xCA, 0xDE, 'W', 'A', 'V', 'E', 0x23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8 wus_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'X', 'T', 'X', 'R', 0xE1, 0, 0, 0, 0};
 
-static double ts = 0, te = 0;
+static int ts = 0, te = 0;
 static int timeout = -1;
 static int sleep_time = 0;
+static uint16 anch_chosen;
 
 int anch_dev(int init) {
 	char debug[50];
@@ -61,9 +62,12 @@ int anch_dev(int init) {
     				timeout = -1;
     				state = wake_up();
     				irq_status = IRQ_NONE;
+					rx_reenable_no_timeout();
     			} else {
-        			/*if (check_timeout(LONG_SLEEP_TIME_MS + 1500) == 0) {
+        			/*if (check_timeout(LONG_SLEEP_TIME_MS + 25000) == 0) {
+        				println("******************");
         				println("**--WU TIMEOUT--**");
+        				println("******************");
         				timeout = -1;
         				state = PUT_TO_SLEEP;
         			}*/
@@ -76,6 +80,10 @@ int anch_dev(int init) {
     				irq_status = IRQ_NONE;
     			} else {
     				if (check_timeout(500) == 0) {
+        				println("********************");
+        				println("**--POLL TIMEOUT--**");
+        				println("********************");
+        				timeout = -1;
 						state = PUT_TO_SLEEP;
 					}
     			}
@@ -148,45 +156,54 @@ uint8 wake_up() {
 			// Calculate the time to wait
 			wus_end_frame_nb = (rx_buffer[WU_MSG_CNTDWN_IDX + 1] << 8) + rx_buffer[WU_MSG_CNTDWN_IDX];
 			wus_end_time_ms = ((wus_end_frame_nb) * (dev->delay.wuFrameTime_sy + 32)) / 1000;
+			anch_chosen = 0;
 
-			// Configure Sleep
-			dwt_forcetrxoff();
-			dwt_rxreset();
-			dwt_configuresleep(DWT_CONFIG, DWT_WAKE_CS | DWT_WAKE_WK | DWT_SLP_EN);
-			dwt_entersleep();
+			int tmp_to;
+			tmp_to = 60000;
+			//dwt_setrxtimeout(tmp_to);
+			//dwt_setpreambledetecttimeout(PRE_TIMEOUT);
+
+			print("W");
+			//dwt_configuresleep(DWT_CONFIG | DWT_RX_EN, DWT_WAKE_CS | DWT_WAKE_WK | DWT_SLP_EN);
+			//dwt_entersleep();
 
 			// Wait and wake up the device
 			Sleep(wus_end_time_ms);
 #if ANCH_DEBUG
 			sleep_time = wus_end_time_ms;
 #endif
-			port_wakeup_dw1000_fast();
-
+			//port_wakeup_dw1000_fast();
+			//dwt_softreset();
+			//set_RFconfiguration();
+			//set_ranging_exchange_config();
 			// Set interrupt and antenna delay
 			dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
+
 			dwt_setrxantennadelay(dev->ant_dly);
 			dwt_settxantennadelay(dev->ant_dly);
-			//dwt_seteui(dev->eui64);
 
-			// Set small preamble config and enable IRQ
-			set_ranging_exchange_config();
-		    port_EnableEXT_IRQ();
-			//Sleep(5);
-			dwt_forcetrxoff();
-			dwt_rxreset();
-			rx_reenable_no_timeout();
-			//Sleep(5);
+		    //port_EnableEXT_IRQ();
+			println("U");
+		    //dwt_setrxtimeout(tmp_to);
+			//dwt_setpreambledetecttimeout(PRE_TIMEOUT);
+	        //dwt_rxenable(DWT_START_RX_IMMEDIATE);
+			//rx_reenable_no_timeout();
 #if ANCH_DEBUG
-			ts = get_systime_ms();
+			ts = portGetTickCnt();
 #endif
 			return WAIT_POLL;
 		}
 
 		if (memcmp(rx_buffer, poll_msg, ALL_MSG_COMMON_LEN) == 0) {
-			println("-> direct poll");
-			return prepare_resp();
+			// A OPTIMISER
+			println("-> direct poll -> sleep");
+			return PUT_TO_SLEEP; //prepare_resp();
 		}
-    }
+    } else if (irq_status == IRQ_RX_ERR) {
+		println("wu err");
+	    //rx_reenable_no_timeout();
+		//return PUT_TO_SLEEP;
+	}
     return WAIT_WAKE_UP;
 }
 
@@ -198,7 +215,7 @@ uint8 prepare_resp() {
 		if (memcmp(rx_buffer, poll_msg, ALL_MSG_COMMON_LEN) == 0) {
 #if ANCH_DEBUG
 			if (te == 0) {
-				te = get_systime_ms();
+				te = portGetTickCnt();
 			}
 #endif
 			uint32 resp_tx_time;
@@ -210,13 +227,13 @@ uint8 prepare_resp() {
 			*((float*) &resp_msg[9]) = distance32;
 			return SEND_RESP;
 		}
+	} else if (irq_status == IRQ_RX_ERR) {
+		//println("poll err");
 	}
 	irq_status = IRQ_NONE;
 	rx_reenable_no_timeout();
 	return WAIT_POLL;
 }
-
-static uint16 anch_chosen;
 
 uint8 read_final_msg() {
 	dw_device_t * dev = get_device();
@@ -243,6 +260,7 @@ uint8 read_final_msg() {
     		final_msg_get_ts(&rx_buffer[FINAL_MSG_FINAL_TX_TS_IDX], &final_tx_ts);
     		tag_address = (rx_buffer[7] << 8 | rx_buffer[8]);
     		if (rx_buffer[9] == TWR_BEGIN) {
+    			count++;
         		anch_chosen = (rx_buffer[idx + 1] << 8 | rx_buffer[idx]);
     			if (dev->add != anch_chosen) {
 					sprintf(debug, "Go back to sleep, %04X chosen, id: [%d]", anch_chosen, frame_id);
@@ -282,28 +300,31 @@ uint8 read_final_msg() {
 
 				if ((distance > 0) && (distance < 2000)) {
 					distance32 = (float) distance;
-					//sprintf(debug, "%2.3fm", distance);
-					//println(debug);
+#if ANCH_DEBUG == 2
+					sprintf(debug, "%2.3fm", distance);
+					println(debug);
+#endif
 					count ++;
 					total += (distance32);
 				}
 				if (rx_buffer[9] == TWR_END) {
-					sprintf(debug, "DIST: %2.3fm %04X with %04X, [%d], id: [%d]", (total / count), anch_chosen, tag_address, count, frame_id);
+					sprintf(debug, "DIST: %2.3fm %04X with %04X, [%d], id: [%d]", (total / (count - 1)), anch_chosen, tag_address, count, frame_id);
 					println(debug);
 					//calibrate_antenna_delay((double)(total/count));
 #if ANCH_DEBUG
-					sprintf(debug, "wu --> poll : %fms, -> wait : %dms", te - ts, sleep_time);
+					sprintf(debug, "wu --> poll : %dms, -> wait : %dms", te - ts, sleep_time);
 					println(debug);
 					/*if (sleep_time < 1100) {
 						println("S");
 					}*/
 #endif
+					te = 0;
 					count = 0;
 					total = 0;
 #if LPL_MODE
 					return PUT_TO_SLEEP;
 #else
-					rx_reenable_no_timeout();
+					//rx_reenable_no_timeout();
 					return REENABLE_RX;
 #endif
 				}
@@ -363,7 +384,7 @@ void rx_ok_anch(const dwt_cb_data_t *cb_data) {
 			//println("wu");
 			lpl_status = AWAKE;
 		} else {
-			// print("m");
+			//print("m");
 		}
 	    irq_status = IRQ_RX_OK;
     } else {
@@ -373,20 +394,15 @@ void rx_ok_anch(const dwt_cb_data_t *cb_data) {
     			put_dev_to_sleep();
     		}
     		println("srx");
-    	} else if ( (rx_buffer[0] == 0x01) || (rx_buffer[0] == 0x05) ) {
-    	    irq_status = IRQ_RX_OK;
     	} else {
-    		 if (rx_buffer[0] == 0x03) {
-				//println("j");
-			} else {
-	    		println("k");
+    		if (rx_buffer[0] == 0x01) {
+    			//print("p");
+			} else if (rx_buffer[0] == 0x05) {
+				//print("f");
+			} else if (rx_buffer[0] == 0x03) {
+				//print("e");
 			}
     	    irq_status = IRQ_RX_OK;
-    		/*for (int i = 0; i < 5; i++) {
-    			sprintf(debug, "%02X ", rx_buffer[i]);
-    			print(debug);
-    		}
-    		put_dev_to_sleep();*/
     	}
     }
 }

@@ -15,6 +15,9 @@
 #define ANCHOR 1
 #define LPL_MODE 1
 #define CALIBRATE 0
+#define LORA 0
+#define STAND_BY 0
+#define SWITCH_CONFIG 0
 
 #define TEST_ADD 0x00
 
@@ -129,6 +132,7 @@ void set_interrupt();
 void set_local_config();
 void put_dev_to_sleep();
 void put_stm32_to_stop_mode();
+void set_RFconfiguration();
 // void wake_up_dev();
 void hardreset_DW1000();
 void set_ranging_exchange_config();

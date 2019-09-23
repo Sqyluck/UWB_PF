@@ -997,6 +997,22 @@ void instance_set_replydelay(int delayus) //delay in us
 	//RX Poll (from A0), the Final will come
 	inst->anc1RespTx2FinalRxDelay_sy = ((delayus >> 1) + RX_RESPONSE_TURNAROUND) - (respframe_sy+RX_RESPONSE_TURNAROUND) - DW_RX_ON_DELAY - respframe;
     inst->anc2RespTx2FinalRxDelay_sy = (delayus >> 1) + RX_RESPONSE_TURNAROUND - 2*(respframe_sy+RX_RESPONSE_TURNAROUND) - DW_RX_ON_DELAY - respframe;
+
+    char debug[30];
+	sprintf(debug, "tagRespRx : %d", inst->tagRespRxDelay_sy);
+	println(debug);
+	sprintf(debug, "replyDelay: %d", respframe + RX_RESPONSE_TURNAROUND);
+	println(debug);
+	sprintf(debug, "poll2final: %d", delayus);
+	println(debug);
+	sprintf(debug, "fwto4Resp : %d", respframe_sy);
+	println(debug);
+	sprintf(debug, "preamble  : %f", preamblelen);
+	println(debug);
+	sprintf(debug, "respFrame : %d", respframe);
+	println(debug);
+	sprintf(debug, "fwtoTime : %d", inst->fwtoTime_sy);
+	println(debug);
 }
 
 /* @fn 	  instance_calc_ranges

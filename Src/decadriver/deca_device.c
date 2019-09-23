@@ -2164,22 +2164,31 @@ uint8 dwt_checkirq(void)
  * no return value
  */
 #include "device.h"
+static int rx_enable = 0;
 void dwt_isr(void)
 {
     uint32 status = pdw1000local->cbData.status = dwt_read32bitreg(SYS_STATUS_ID); // Read status register low 32bits
     char debug[30];
-    /*println("isr");
+    //println("isr");
+    if (rx_enable == 1) {
+    	rx_enable = 0;
+    }
+
+    if (status == 0xffffffff) {
+    	//println("status invalid");
+    	return;
+    }
 
     if (lpl_status == ASLEEP) {
     	lpl_status = AWAKE;
     	println("lo");
     	dwt_setlowpowerlistening(0);
-    }*/
+    }
 
-	if (status == 0x02A00003) {
-		//print(".");
+	/*if (status == 0x02A00003) {
+		print(".");
 		dwt_write32bitreg(SYS_STATUS_ID, 0x02000000);
-	}
+	}*/
 
 	//print("i");
 
@@ -2285,7 +2294,6 @@ void dwt_isr(void)
     {
 
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR); // Clear RX error event bits
-        //println("\nERROR: ");
 
 		/*if (status & SYS_STATUS_RXPHE) {
 			println("RXPHE");
@@ -2824,8 +2832,14 @@ void dwt_setsnoozetime(uint8 snooze_time)
  */
 int dwt_rxenable(int mode)
 {
-    uint16 temp ;
-    uint8 temp1 ;
+	//print("x");
+	if (rx_enable == 1) {
+		println("déja");
+	} else {
+		rx_enable = 1;
+	}
+    uint16 temp;
+    uint8 temp1;
 
     if ((mode & DWT_NO_SYNC_PTRS) == 0)
     {
