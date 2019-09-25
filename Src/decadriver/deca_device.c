@@ -2164,12 +2164,15 @@ uint8 dwt_checkirq(void)
  * no return value
  */
 #include "device.h"
+#include "stm32l4xx_hal.h"
+#include "GPIO.h"
 static int rx_enable = 0;
 void dwt_isr(void)
 {
     uint32 status = pdw1000local->cbData.status = dwt_read32bitreg(SYS_STATUS_ID); // Read status register low 32bits
     char debug[30];
     //println("isr");
+
     if (rx_enable == 1) {
     	rx_enable = 0;
     }
@@ -2189,7 +2192,7 @@ void dwt_isr(void)
     	 if (lpl_status == ASLEEP) {
 			lpl_status = AWAKE;
 			dwt_setlowpowerlistening(0);
-			println("lo");
+			//println("lo");
 		}
 #endif
 

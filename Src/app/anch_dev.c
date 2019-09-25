@@ -5,6 +5,7 @@
 #include "device.h"
 #include "anch_dev.h"
 #include "main.h"
+#include "GPIO.h"
 
 extern double dwt_getrangebias(uint8 chan, float range, uint8 prf);
 typedef signed long long int64;
@@ -152,9 +153,9 @@ int anch_dev(int init) {
     			break;
 
     		case PUT_TO_SLEEP:
+				irq_status = IRQ_NONE;
     			put_dev_to_sleep();
 				state = WAIT_WAKE_UP;
-				irq_status = IRQ_NONE;
     			break;
     	}
      }
@@ -175,22 +176,18 @@ uint8 wake_up() {
 
 			int tmp_to;
 			tmp_to = 60000;
-			//dwt_setrxtimeout(tmp_to);
-			//dwt_setpreambledetecttimeout(PRE_TIMEOUT);
 
 			print("W");
-			//dwt_configuresleep(DWT_CONFIG | DWT_RX_EN, DWT_WAKE_CS | DWT_WAKE_WK | DWT_SLP_EN);
-			//dwt_entersleep();
+			dwt_configuresleep(DWT_CONFIG | DWT_RX_EN, DWT_WAKE_CS | DWT_WAKE_WK | DWT_SLP_EN);
+			dwt_entersleep();
 
 			// Wait and wake up the device
 			Sleep(wus_end_time_ms + 50);
 #if ANCH_DEBUG
 			sleep_time = wus_end_time_ms;
 #endif
-            //dwt_spicswakeup(dummy_buffer, DUMMY_BUFFER_LEN);
-			//port_wakeup_dw1000_fast();
-			//dwt_softreset();
-			//set_RFconfiguration();
+            dwt_spicswakeup(dummy_buffer, DUMMY_BUFFER_LEN);
+
 			//set_ranging_exchange_config();
 			// Set interrupt and antenna delay
 			dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
@@ -200,10 +197,6 @@ uint8 wake_up() {
 
 		    port_EnableEXT_IRQ();
 			println("U");
-		    //dwt_setrxtimeout(tmp_to);
-			//dwt_setpreambledetecttimeout(PRE_TIMEOUT);
-	        //dwt_rxenable(DWT_START_RX_IMMEDIATE);
-			//rx_reenable_no_timeout();
 #if ANCH_DEBUG
 			ts = portGetTickCnt();
 #endif
@@ -220,8 +213,6 @@ uint8 wake_up() {
 		}
     } else if (irq_status == IRQ_RX_ERR) {
 		println("wu err");
-	    //rx_reenable_no_timeout();
-		//return PUT_TO_SLEEP;
 	}
     return WAIT_WAKE_UP;
 }
@@ -389,6 +380,7 @@ void rx_reenable_no_timeout () {
 
 void rx_ok_anch(const dwt_cb_data_t *cb_data) {
     int i;
+
     char debug[50];
     for (i = 0 ; i < RX_BUF_LEN; i++ ) {
         rx_buffer[i] = 0;
@@ -399,11 +391,13 @@ void rx_ok_anch(const dwt_cb_data_t *cb_data) {
     }
 
     if ((rx_buffer[0] == 0x41) && (rx_buffer[1] == 0x88)) {
+        HAL_GPIO_WritePin(LED_Port, LED_Pin, GPIO_PIN_SET);
+
 		if (lpl_status == ASLEEP) {
-			println("wu");
+			//println("wu");
 			lpl_status = AWAKE;
 		} else {
-			print("w");
+			//print("w");
 		}
 	    irq_status = IRQ_RX_OK;
     } else {

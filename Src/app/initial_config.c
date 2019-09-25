@@ -597,18 +597,11 @@ void put_dev_to_sleep() {
 	if (devID == DWT_DEVICE_ID) {
 		println("!!!!!! SLEEP FAILED !!!!!!");
 	} else {
+	    HAL_GPIO_WritePin(LED_Port, LED_Pin, GPIO_PIN_RESET);
 		println("[STM32] Put to sleep\r\n");
 #if STOP_MODE
-		HAL_SuspendTick();
-	    HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
-
-	    SYSCLKConfig_STOP();
-		HAL_ResumeTick();
-		//dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
-
-
+		enter_stop_mode();
 	    println("END of stop mode");
-	    //NVIC_SystemReset();
 #endif
 
 #if STAND_BY
@@ -626,6 +619,46 @@ void put_dev_to_sleep() {
 		//NVIC_SystemReset();
 		//while(1) {};
 	}
+}
+
+#include "GPIO.h"
+void enter_stop_mode() {
+	GPIO_InitTypeDef GPIO_InitStruct;
+	uint16 stop_pin = 0xffff;
+
+	//__HAL_RCC_GPIOA_CLK_ENABLE();
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	__HAL_RCC_GPIOC_CLK_ENABLE();
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+
+	stop_pin = ~(DW_IRQn_Pin | DW_RESET_Pin | DW_MOSI_Pin | DW_MISO_Pin | DW_NSS_Pin | DW_SCK_Pin);
+	char debug[20];
+	sprintf(debug, "%04X", stop_pin);
+	println(debug);
+
+	/*GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Pin = stop_pin;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);*/
+
+	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Pin = GPIO_PIN_All;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	//__HAL_RCC_GPIOA_CLK_DISABLE();
+	__HAL_RCC_GPIOB_CLK_DISABLE();
+	__HAL_RCC_GPIOC_CLK_DISABLE();
+	__HAL_RCC_GPIOD_CLK_DISABLE();
+
+	HAL_SuspendTick();
+	HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+
+	SYSCLKConfig_STOP();
+	HAL_ResumeTick();
 }
 
 /* @fn	hardreset_DW1000
