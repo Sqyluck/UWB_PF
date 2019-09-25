@@ -67,6 +67,7 @@ int tag_dev(void) {
 	dwt_setrxtimeout((uint16)dev->delay.fwto4RespFrame_sy);
 
 	dwt_setpreambledetecttimeout(PRE_TIMEOUT);
+	port_EnableEXT_IRQ();
 	double start, end;
 	int delay;
 	/* Loop forever initiating ranging exchanges. */
@@ -425,7 +426,7 @@ void send_result() {
 		dist_d = (uint) (total * 1000) % 1000000;
 #if CALIBRATE
 		if (i == 0) {
-			// calibrate_antenna_delay(total);
+			calibrate_antenna_delay(total);
 		}
 #endif
 		data[len + ADD0] = (anch_dist[i].address >> 8) & 0xFF;
@@ -443,10 +444,6 @@ void send_result() {
 		anch_dist[i].address = 0x0000;
 	}
 #if LORA
-	for (int i = 0; i < 10; i++) {
-		sprintf(debug, "%02X ", data[i]);
-		print(debug);
-	}
 
 	enable_loraIRQ();
 	int ret = 0;

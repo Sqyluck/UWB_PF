@@ -91,6 +91,7 @@ port_deca_isr_t port_deca_isr;
 
 #if !(EXTI0_IRQn)
 #define EXTI0_IRQn		(6)
+#define EXTI1_IRQn      (7)
 #endif
 
 

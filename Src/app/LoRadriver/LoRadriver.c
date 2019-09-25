@@ -25,6 +25,8 @@ static int cfg_id = 0;
 int phase = AT;
 static int IRQ_enabled;
 
+
+// Uart callback from lora device
 void lora_usart_callback(unsigned char c) {
 	char debug[30];
 #if DEBUG == 3
@@ -124,14 +126,25 @@ void clear_uart_buf() {
     lora_data.len = 0;
 }
 
-int check_resp(uint8_t * resp) {
-	return (memcmp(&lora_config[cfg_id].exp_resp, resp, lora_config[cfg_id].resp_len) == 0 ? 1 : 0);
+
+void send_str_lora(char * cmd) {
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd, strlen(cmd), 0xFFFF);
 }
 
 void send_cmd_lora(char * cmd, int size) {
 	HAL_UART_Transmit(&huart1, (uint8_t*)cmd, size, 0xFFFF);
 }
 
+/* @fn isDistFields
+ * @brief	Check if the given id must represent a distance (num) or an id (char)
+ * 			msg : CCCC02CCCCddddddddddddCCCCddddddddddddCCCCddddddddddddCCCCdddddddddddd
+ * 			where (CC) form a byte but (dd) form a number (0x30 to 0x39)
+ * 			look at send_cmsghex_lora function for more details
+ * @param	int field_id 	- id
+ *
+ * @return	1 if it represent a distance field
+ * 			0 if not
+ * */
 int isDistFields(int field_id) {
 	for (int i = 0; i < 4; i++) {
 		if ((field_id >= 3 + 2 + 8 * i) && (field_id < 3 + 8 * (i + 1))) {
@@ -141,6 +154,12 @@ int isDistFields(int field_id) {
 	return 0;
 }
 
+/* @fn 		getByteFromStrResp
+ * @brief 	return a string representing byte as byte (ex: "AB" => 0xab)
+ * @param	char* str	- string representing the byte
+ *
+ * @return	uint8 	    - can not do it now, wait for release
+ * */
 int getByteFromStrResp(char* str) {
 	uint8_t res = 0x00;
 	char c;
@@ -161,6 +180,11 @@ int getByteFromStrResp(char* str) {
 	return res;
 }
 
+/* @fn 		isLoraConnected
+ * @brief 	Check if a lora device is connected with an AT command
+ *
+ * @return	int 	- 1 if connected, else 0
+ * */
 int isLoraConnected() {
 	phase = AT;
 	int nb_try = 0;
@@ -173,6 +197,15 @@ int isLoraConnected() {
 	return answer_ok;
 }
 
+/* @fn send_cmsghex_lora
+ * @brief Send msghex to lora
+ * @param	char* hex	- hex data
+ * @param	int size	- data size
+ *
+ * @return	  1  if communication starts
+ *			  0  if no free channel or system busy
+ *  	 	 -1  unknown error
+ * */
 int send_cmsghex_lora(unsigned char * hex, int size) {
 	char msghex[60] = "";
 	char debug[30];
@@ -185,10 +218,10 @@ int send_cmsghex_lora(unsigned char * hex, int size) {
 	sprintf(msghex, "AT+MSGHEX=");
 	for (int i = 0; i < size; i++) {
 		if (size == 35) {
-			if (isDistFields(i)) {
+			if (isDistFields(i)) { // if the byte represent a number, copy the char representing it
 				sprintf(msghex + currentsize, "%c", hex[i]);
 				currentsize++;
-			} else {
+			} else { // else copy the hexadecimal value
 				sprintf(msghex + currentsize, "%02X", hex[i]);
 				currentsize+=2;
 			}
@@ -219,6 +252,14 @@ int send_cmsghex_lora(unsigned char * hex, int size) {
 	}
 }
 
+/* @fn wait_lora_status
+ * @brief Wait until status is found or timeout expired
+ * @param int status 	- status
+ * @param int timeout 	- timeout in milliseconds
+ *
+ * @return	1  if status found
+ * 			0  if timeout expired
+ * */
 int wait_lora_status(int status, int timeout) {
 	int start_ts;
 	start_ts = portGetTickCnt();
@@ -234,48 +275,11 @@ int wait_lora_status(int status, int timeout) {
 		println("TIMEOUT, EXPECTED STATUS NOT RECEIVED");
 		return 0;
 	}
-
-	/*char debug[30];
-	double sending_time, current_time, previous_time = 0, global_time, save_time = 0;
-	current_time = get_systime_s();
-	sending_time = current_time;
-	global_time = current_time;
-	int counter = 0, show_timer = 0;
-
-	while (lora_status != status) {
-		current_time = get_systime_s();
-		if (current_time < previous_time) {
-			double diff = previous_time + current_time;
-			save_time += diff;
-		} else {
-			global_time= save_time + current_time;
-			if (show_timer == 1) {
-				if (counter % 10000 == 0) {
-					sprintf(debug, "t: %.2fs", global_time);
-					println(debug);
-				}
-				counter++;
-			}
-		}
-		if (timeout != 0) {
-			if (sending_time < global_time - timeout) {
-				return 0;
-			}
-		}
-		previous_time = current_time;
-	}
-	if (lora_status == status) {
-		return 1;
-	} else {
-		println("TIMEOUT, EXPECTED STATUS NOT RECEIVED");
-		return 0;
-	}*/
 }
 
-void send_str_lora(char * cmd) {
-	HAL_UART_Transmit(&huart1, (uint8_t*)cmd, strlen(cmd), 0xFFFF);
-}
-
+/* @fn clear_lora_pending_message
+ * @brief Send empty message to clear the lorawan server queue in class A
+ * */
 void clear_lora_pending_message() {
 	int leave = 0;
 	while (leave == 0) {
@@ -293,6 +297,10 @@ void clear_lora_pending_message() {
 	}
 }
 
+/* @fn init_at_command
+ * @brief prepare the lora_config array with all the AT command needed
+ *
+ * */
 void init_at_command() {
 	dw_device_t * dev = get_device();
 
@@ -328,19 +336,28 @@ void init_at_command() {
 	}
 }
 
+/* @fn enable_loraIRQ
+ * @brief enable lora IRQ
+ * */
 void enable_loraIRQ() {
-	//HAL_NVIC_DisableIRQ(USART1_IRQn);
-	//huart1->RxState = HAL_UART_STATE_READY;
 	HAL_NVIC_EnableIRQ(USART1_IRQn);
 	IRQ_enabled = 1;
-	//huart1.Instance->CR1 = USART_CR1_RE | USART_CR1_TE | USART_CR1_UE | USART_CR1_RXNEIE;
 }
 
+/* @fn disable_loraIRQ
+ * @brief disable lora IRQ
+ * */
 void disable_loraIRQ() {
 	IRQ_enabled = 0;
 	HAL_NVIC_DisableIRQ(USART1_IRQn);
 }
 
+/* @fn init_lora
+ * @brief Send AT command to init the lora device
+ *
+ * @return 	1 if the initialization is successful
+ * 			0 if some command are rejected
+ * */
 int init_lora() {
 	char debug[30];
 	println("init lora");
@@ -373,8 +390,6 @@ int init_lora() {
 			HAL_Delay(delay);
 		}
 	}
-	//send_str_lora("AT+DELAY\r\n");
-	//Sleep(5000);
 	clear_uart_buf();
 
 	phase = PGM;

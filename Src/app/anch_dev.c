@@ -9,7 +9,7 @@
 extern double dwt_getrangebias(uint8 chan, float range, uint8 prf);
 typedef signed long long int64;
 
-#define ANCH_DEBUG 0
+#define ANCH_DEBUG 1
 
 #if LPL_MODE
 static uint8 state = WAIT_WAKE_UP;
@@ -45,8 +45,15 @@ int anch_dev(int init) {
 #if LPL_MODE
 	if (init == 1) {
 		put_dev_to_sleep();
+		//rx_reenable_no_timeout();
 	} else {
-		lpl_status = ASLEEP;
+		//lpl_status = ASLEEP;
+		lpl_status = AWAKE;
+		//HAL_Delay(50);
+		//port_EnableEXT_IRQ();
+		uint32 status = port_GetEXT_IRQStatus();
+		sprintf(debug, "%d", status);
+		println(debug);
 		rx_reenable_no_timeout();
 	}
 #else
@@ -66,7 +73,7 @@ int anch_dev(int init) {
     					rx_reenable_no_timeout();
     					// break;
     				} else {
-    					println("don't reenable rx");
+    					//println("don't reenable rx");
     				}
     			} else {
         			if (lpl_status == AWAKE) {
@@ -180,6 +187,7 @@ uint8 wake_up() {
 #if ANCH_DEBUG
 			sleep_time = wus_end_time_ms;
 #endif
+            //dwt_spicswakeup(dummy_buffer, DUMMY_BUFFER_LEN);
 			//port_wakeup_dw1000_fast();
 			//dwt_softreset();
 			//set_RFconfiguration();
@@ -190,7 +198,7 @@ uint8 wake_up() {
 			dwt_setrxantennadelay(dev->ant_dly);
 			dwt_settxantennadelay(dev->ant_dly);
 
-		    //port_EnableEXT_IRQ();
+		    port_EnableEXT_IRQ();
 			println("U");
 		    //dwt_setrxtimeout(tmp_to);
 			//dwt_setpreambledetecttimeout(PRE_TIMEOUT);
@@ -203,14 +211,11 @@ uint8 wake_up() {
 		}
 
 		if (memcmp(rx_buffer, poll_msg, ALL_MSG_COMMON_LEN) == 0) {
-			// A OPTIMISER
 			dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
 
 			dwt_setrxantennadelay(dev->ant_dly);
 			dwt_settxantennadelay(dev->ant_dly);
-			println("********************");
-			println("**--DIRECT POLL--**");
-			println("********************");
+			print("D");
 			return prepare_resp();
 		}
     } else if (irq_status == IRQ_RX_ERR) {
@@ -395,10 +400,10 @@ void rx_ok_anch(const dwt_cb_data_t *cb_data) {
 
     if ((rx_buffer[0] == 0x41) && (rx_buffer[1] == 0x88)) {
 		if (lpl_status == ASLEEP) {
-			//println("wu");
+			println("wu");
 			lpl_status = AWAKE;
 		} else {
-			//print("w");
+			print("w");
 		}
 	    irq_status = IRQ_RX_OK;
     } else {

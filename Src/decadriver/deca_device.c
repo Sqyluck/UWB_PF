@@ -2185,15 +2185,17 @@ void dwt_isr(void)
 	}*/
 
 	//print("i");
-
-
-    if(status & SYS_STATUS_RXFCG)
-    {
+#if !STAND_BY
     	 if (lpl_status == ASLEEP) {
 			lpl_status = AWAKE;
 			dwt_setlowpowerlistening(0);
 			println("lo");
 		}
+#endif
+
+    if(status & SYS_STATUS_RXFCG)
+    {
+
         uint16 finfo16;
         uint16 len;
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD); // Clear all receive status bits
@@ -2778,7 +2780,6 @@ void dwt_setsniffmode(int enable, uint8 timeOn, uint8 timeOff)
 void dwt_setlowpowerlistening(int enable)
 {
     uint32 pmsc_reg = dwt_read32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET);
-    char debug[30];
     if (enable)
     {
         /* Configure RX to sleep and snooze features. */
@@ -2787,11 +2788,7 @@ void dwt_setlowpowerlistening(int enable)
     else
     {
         /* Reset RX to sleep and snooze features. */
-    	sprintf(debug, "1- %08X ", pmsc_reg);
-		println(debug);
         pmsc_reg &= ~(PMSC_CTRL1_ARXSLP | PMSC_CTRL1_SNOZE);
-        sprintf(debug, "2- %08X ", pmsc_reg);
-		println(debug);
     }
 
     dwt_write32bitoffsetreg(PMSC_ID, PMSC_CTRL1_OFFSET, pmsc_reg);

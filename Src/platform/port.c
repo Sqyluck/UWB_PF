@@ -184,12 +184,12 @@ void setup_DW1000RSTnIRQ(int enable)
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		HAL_GPIO_Init(DW_RESET_GPIO_Port, &GPIO_InitStruct);
 
-		HAL_NVIC_EnableIRQ(EXTI0_IRQn);		//pin #0 -> EXTI #0
-		HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
+		HAL_NVIC_EnableIRQ(EXTI1_IRQn);		//pin #0 -> EXTI #0
+		HAL_NVIC_SetPriority(EXTI1_IRQn, 5, 0);
 	}
 	else
 	{
-		HAL_NVIC_DisableIRQ(EXTI0_IRQn);	//pin #0 -> EXTI #0
+		HAL_NVIC_DisableIRQ(EXTI1_IRQn);	//pin #0 -> EXTI #0
 
 		//put the pin back to tri-state ... as 
 		//output open-drain (not active)
@@ -309,6 +309,7 @@ void port_set_dw1000_fastrate(void)
  * */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
+
 	if (GPIO_Pin == DW_RESET_Pin)
 	{
 		signalResetDone = 1;

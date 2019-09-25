@@ -10,13 +10,19 @@
 
 #include "deca_device_api.h"
 #include "deca_types.h"
-
+/* @fn
+ * @brief
+ * @param
+ *
+ * @return
+ * */
 #define TAG    0
 #define ANCHOR 1
 #define LPL_MODE 1
 #define CALIBRATE 0
 #define LORA 1
 #define STAND_BY 0
+#define STOP_MODE 1
 #define SWITCH_CONFIG 0
 
 #define TEST_ADD 0x00

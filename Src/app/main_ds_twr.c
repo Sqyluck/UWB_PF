@@ -19,12 +19,11 @@ int main_ds_twr (int init) {
 
 	char debug[50];
 	dw_device_t * dev = get_device();
-	uint32 partid;
-	partid = _dwt_otpread(PARTID_ADDRESS);
 	int role = ANCHOR;
 
 #if LORA
 	if (init == 1) {
+		// if lora is connected, the device is a tag
 		int lora_active = 0;
 		lora_active = isLoraConnected();
 		sprintf(debug, "[LORA] %s", lora_active ? "ACTIVATED" : "DISACTIVATED");
@@ -34,6 +33,8 @@ int main_ds_twr (int init) {
 		role = ANCHOR;
 	}
 #else
+	uint32 partid;
+	partid = _dwt_otpread(PARTID_ADDRESS);
 	if ((partid &0xffff) == 0x11B6) {
 		role = TAG;
 	} else {
@@ -57,6 +58,7 @@ int main_ds_twr (int init) {
 #endif
 		tag_dev();
 	} else {
+		print("a");
 		anch_dev(init);
 	}
 	return 1;

@@ -11,7 +11,7 @@
 #include "main.h"
 
 static dwt_config_t config [4] = {
-	{
+	{  //Config 110K
 		2,               // Channel number.
 		DWT_PRF_64M,     // Pulse repetition frequency.
 		DWT_PLEN_1024,   // Preamble length. Used in TX only.
@@ -23,7 +23,7 @@ static dwt_config_t config [4] = {
 		DWT_PHRMODE_STD, // PHY header mode.
 		(1025 + 64 - 32) // SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only.
 	},
-	{
+	{	//Config 6M8 low power listening
 		2,               // Channel number.
 		DWT_PRF_16M,     // Pulse repetition frequency.
 		DWT_PLEN_1024, //DWT_PLEN_128,   // Preamble length. Used in TX only.
@@ -34,7 +34,8 @@ static dwt_config_t config [4] = {
 		DWT_BR_6M8,     // Data rate.
 		DWT_PHRMODE_STD, // PHY header mode.
 		(1024 + 1 + 8 - 16) //(128 + 1 + 8 - 8) // SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only.
-	}, {
+	},
+	{	//Config 6M8 ranging exchange
 		2,               // Channel number.
 		DWT_PRF_64M,     // Pulse repetition frequency.
 		DWT_PLEN_256,    //DWT_PLEN_128,   // Preamble length. Used in TX only.
@@ -45,7 +46,8 @@ static dwt_config_t config [4] = {
 		DWT_BR_6M8,     // Data rate.
 		DWT_PHRMODE_STD, // PHY header mode.
 		(256 + 1 + 8 - 16) //(128 + 1 + 8 - 8) // SFD timeout (preamble length + 1 + SFD length - PAC size)
-	}, 	{
+	},
+	{	//Test demo
 		2,            // channel
 		DWT_PRF_16M,   // prf
 		DWT_PLEN_128,
@@ -93,10 +95,19 @@ static dev_cfg_t dev_cfg[NB_CALIB] = {
 
 static dw_device_t device;
 static dwt_txconfig_t txconfig;
+static void SYSCLKConfig_STOP(void);
+
 
 //uint8 irq_status = IRQ_NONE;
 uint8 dummy_buffer[DUMMY_BUFFER_LEN];
 
+/* @fn init_config
+ * @brief	initialise the DW1000
+ * @param	int role 		- TAG or ANCHOR
+ *			int dataRate 	- 6M8 or 110K
+ * 			int init 		- 1 for the first time, 0 if not (stand by only)
+ *
+ * */
 void init_config(int role, int dataRate, int init) {
 	uint8 smart_power = 0;
 	uint32 devID;
@@ -114,6 +125,9 @@ void init_config(int role, int dataRate, int init) {
 		smart_power = 1;
 	}
 
+
+
+	//reset the DW1000 by driving the RSTn line low
 	port_DisableEXT_IRQ();
 
 	port_set_dw1000_slowrate();
@@ -121,7 +135,6 @@ void init_config(int role, int dataRate, int init) {
 	devID = dwt_readdevid() ;
 	if(DWT_DEVICE_ID != devID) {
 		println("*******NEED WAKE UP*********");
-		//port_wakeup_dw1000();
 		port_wakeup_dw1000_fast();
 
 		devID = dwt_readdevid() ;
@@ -138,18 +151,14 @@ void init_config(int role, int dataRate, int init) {
 		}
 		dwt_softreset();
 	}
-
-	//reset the DW1000 by driving the RSTn line low
-
-
-	if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)
-	{
+	if (dwt_initialise(DWT_LOADUCODE) == DWT_ERROR)	{
 		println("Initialization Failed, abandon");
 		NVIC_SystemReset();
 		while (1)
 		{ };
 	}
 	port_set_dw1000_fastrate();
+	port_EnableEXT_IRQ();
 #if !STAND_BY
 	setup_DW1000RSTnIRQ(0);
 #endif
@@ -167,7 +176,7 @@ void init_config(int role, int dataRate, int init) {
 
 	// Configure the interruptions
 	set_interrupt();
-	port_EnableEXT_IRQ();
+
 	set_local_config();
 	if (init == 1) {
 		sprintf(debug, " - ant delay: %d", device.ant_dly);
@@ -177,11 +186,21 @@ void init_config(int role, int dataRate, int init) {
 	}
 }
 
+/* @fn get_device
+ * @brief return a pointer on the dw_device_t device
+ *
+ * @return dw_device_t*   pointer on the dw_device_t object
+ * */
 dw_device_t * get_device() {
 	return &device;
 }
 
-
+/* @fn convert_usec_to_devtimeu
+ * @brief	convert micro seconds to the DW1000 time unit
+ * @param	double microsecu	- microseconds
+ *
+ * @return	uint64 	number of DW1000 time unit
+ * */
 uint64 convert_usec_to_devtimeu (double microsecu) {
 	uint64 dt;
     long double dtime;
@@ -190,6 +209,12 @@ uint64 convert_usec_to_devtimeu (double microsecu) {
     return dt;
 }
 
+/* @fn convert_devtimeu_to_usec
+ * @brief	convert the DW1000 time unit to  micro seconds
+ * @param	double devtimeu		- DW1000 time unit
+ *
+ * @return	uint64 	number of microsecond
+ * */
 int convert_devtimeu_to_usec (uint64 devtimeu) {
 	long double utime;
     utime = (int64) (devtimeu << 8) * (double) DWT_TIME_UNITS * 1e6;
@@ -197,6 +222,13 @@ int convert_devtimeu_to_usec (uint64 devtimeu) {
     return ret;
 }
 
+/* @fn calculate_length_data
+ * @brief	calculate the length data in nanoseconds
+ * @param	float msgdatalen	- the data length
+ * @param	uint8 dataRate		- the data rate (6M8 or 110K)
+ *
+ * @return	float  the message length in nanosecond
+ * */
 float calculate_length_data(float msgdatalen, uint8 dataRate) {
 	int x = 0;
 	x = (int) ceil(msgdatalen*8/330.0f);
@@ -217,6 +249,10 @@ float calculate_length_data(float msgdatalen, uint8 dataRate) {
 	return msgdatalen ;
 }
 
+/* @fn	set_RFconfiguration
+ * @brief configure tx power
+ *
+ * */
 void set_RFconfiguration() {
 	int smart_power = 0;
 	if (device.config.dataRate == DWT_BR_6M8) {
@@ -227,6 +263,12 @@ void set_RFconfiguration() {
 	dwt_configuretxrf(&txconfig);
 }
 
+/* @fn set_delays
+ * @brief	Set all the delays needed to achieve the DS-TWR and the wake-up phase
+ * @param	dwt_config_t * config			- the current config
+ * @param	delay_config_t * delay_config	- the variable where the delay will be set
+ *
+ * */
 void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
     int margin = 3000; //2000 symbols
     int ifs;
@@ -318,6 +360,11 @@ void set_delays(dwt_config_t * config, delay_config_t * delay_config) {
 	//sprintf(debug, "replyDelA: %d");
 }
 
+/* @fn calibrate_antenna_delay
+ * @brief	Use to calibrate the antenna delay, the threshold should be fix at the expected distance
+ * @param	double dist		- the measured distance
+ *
+ * */
 void calibrate_antenna_delay(double dist) {
 	double threshold = 1.04;
 	uint8 change_ant_dly = 0;
@@ -357,6 +404,11 @@ void calibrate_antenna_delay(double dist) {
 	}
 }
 
+/* @fn	set_ranging_exchange_config
+ * @brief	Use to set the config with a "short" preamble, to decrease the duration of
+ * 			a ranging exchange and so decrease the power consumption (only 6M8)
+ *
+ * */
 void set_ranging_exchange_config() {
 #if SWITCH_CONFIG
 	dwt_forcetrxoff();
@@ -371,6 +423,11 @@ void set_ranging_exchange_config() {
 #endif
 }
 
+/* @fn	set_lowpowerlistening_config
+ * @brief	Use to set the config with a "long" preamble, to be able to wake up anchors
+ * 			in low-power listening
+ *
+ * */
 void set_lowpowerlistening_config() {
 #if SWITCH_CONFIG
 	dwt_forcetrxoff();
@@ -385,6 +442,10 @@ void set_lowpowerlistening_config() {
 #endif
 }
 
+/* @fn	set_interrupt
+ * @brief	set interrupts and callback
+ *
+ * */
 void set_interrupt() {
 	if (device.role == TAG) {
 		dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
@@ -399,6 +460,10 @@ void set_interrupt() {
 	}
 }
 
+/* @fn	set_local_config
+ * @brief	get antenna delay and device Id from memory and set them on local config
+ *
+ * */
 void set_local_config () {
 	uint16 txAntennaDelay = 0;
 	uint8 chanindex = 0;
@@ -462,6 +527,42 @@ void set_local_config () {
 }
 
 
+static void SYSCLKConfig_STOP(void)
+{
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  uint32_t pFLatency = 0;
+
+  /* Enable Power Control clock */
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  /* Get the Oscillators configuration according to the internal RCC registers */
+  HAL_RCC_GetOscConfig(&RCC_OscInitStruct);
+
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* Get the Clocks configuration according to the internal RCC registers */
+  HAL_RCC_GetClockConfig(&RCC_ClkInitStruct, &pFLatency);
+
+  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2
+     clocks dividers */
+  RCC_ClkInitStruct.ClockType     = RCC_CLOCKTYPE_SYSCLK;
+  RCC_ClkInitStruct.SYSCLKSource  = RCC_SYSCLKSOURCE_PLLCLK;
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, pFLatency) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* @fn	put_dev_to_sleep
+ * @brief	put the device in low power listening (and STOP MODE or STANDBY MODE or NONE)
+ *
+ * */
 void put_dev_to_sleep() {
 	uint32 lp_osc_freq, sleep_cnt;
 
@@ -487,8 +588,8 @@ void put_dev_to_sleep() {
 	dwt_setlowpowerlistening(1);
 
 	lpl_status = ASLEEP;
-
     port_EnableEXT_IRQ();
+
 
 	dwt_entersleep();
 
@@ -497,6 +598,18 @@ void put_dev_to_sleep() {
 		println("!!!!!! SLEEP FAILED !!!!!!");
 	} else {
 		println("[STM32] Put to sleep\r\n");
+#if STOP_MODE
+		HAL_SuspendTick();
+	    HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+
+	    SYSCLKConfig_STOP();
+		HAL_ResumeTick();
+		//dwt_setinterrupt(DWT_INT_TFRS | DWT_INT_RFCG | DWT_INT_RFTO | DWT_INT_RXPTO | DWT_INT_RPHE | DWT_INT_RFCE | DWT_INT_RFSL | DWT_INT_SFDT, 1);
+
+
+	    println("END of stop mode");
+	    //NVIC_SystemReset();
+#endif
 
 #if STAND_BY
 		HAL_PWREx_EnableGPIOPullDown(PWR_GPIO_A, PWR_GPIO_BIT_0);
@@ -515,6 +628,10 @@ void put_dev_to_sleep() {
 	}
 }
 
+/* @fn	hardreset_DW1000
+ * @brief	Hard reset the DW1000
+ *
+ * */
 void hardreset_DW1000() {
 	HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_RESET);
 
@@ -523,6 +640,11 @@ void hardreset_DW1000() {
 	HAL_GPIO_WritePin(DW_RESET_GPIO_Port, DW_RESET_Pin, GPIO_PIN_SET);
 }
 
+/* @fn	get_rx_timestamp_u64
+ * @brief	read the last rx time stamp in register
+ *
+ * @return	uint64 ts	the time stamp in DW1000 time units
+ * */
 uint64 get_rx_timestamp_u64(void) {
     uint8 ts_tab[5];
     uint64 ts = 0;
@@ -536,6 +658,11 @@ uint64 get_rx_timestamp_u64(void) {
     return ts;
 }
 
+/* @fn	get_tx_timestamp_u64
+ * @brief	read the last tx time stamp in register
+ *
+ * @return	uint64		the time stamp in DW1000 time units
+ * */
 uint64 get_tx_timestamp_u64(void) {
     uint8 ts_tab[5];
     uint64 ts = 0;
@@ -549,18 +676,33 @@ uint64 get_tx_timestamp_u64(void) {
     return ts;
 }
 
+/* @fn	get_systime_ms
+ * @brief	get the systime in ms (the systime can't exceed 17.207s)
+ *
+ * @return	double 		the systime in ms
+ * */
 double get_systime_ms() {
 	uint32 ts = dwt_readsystimestamphi32() >> 1;
 	double coef = 512/(499.2e6*128);
 	return (double) (coef * ts) * 1e3;
 }
 
+/* @fn	get_systime_us
+ * @brief	get the systime in µs (the systime can't exceed 17.207s)
+ *
+ * @return	double 		the systime in µs
+ * */
 double get_systime_us() {
 	uint32 ts = dwt_readsystimestamphi32() >> 1;
 	double coef = 512/(499.2e6*128);
 	return (double) (coef * ts) * 1e6;
 }
 
+/* @fn	get_systime_s
+ * @brief	get the systime in s (the systime can't exceed 17.207s)
+ *
+ * @return	double 		the systime in s
+ * */
 double get_systime_s() {
 	uint32 ts = dwt_readsystimestamphi32() >> 1;
 	double coef = 512/(499.2e6*128);

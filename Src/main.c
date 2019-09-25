@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "device.h"
 #include "GPIO.h"
 #include "LoRadriver/LoRadriver.h"
 /* USER CODE END Includes */
@@ -102,6 +103,11 @@ int main(void)
 	SystemClock_Config();
 
 	/* USER CODE BEGIN SysInit */
+#if STOP_MODE
+	__HAL_RCC_PWR_CLK_ENABLE();
+	__HAL_RCC_WAKEUPSTOP_CLK_CONFIG(RCC_STOP_WAKEUPCLOCK_HSI);
+#endif
+
 	MX_GPIO_Init_Dev();
 	/* USER CODE END SysInit */
 
@@ -111,23 +117,17 @@ int main(void)
 	MX_USART2_UART_Init();
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
-	//dw_main();
-	//setup_DW1000RSTnIRQ(0);
 
 	int init = 1;
-	if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET) {
-		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
-	}
 
 	if (__HAL_PWR_GET_FLAG(PWR_FLAG_WUF1) != RESET) {
 		init = 0;
-		//dwt_setlowpowerlistening(0);
+		dwt_setlowpowerlistening(0);
 		println("b");
 		__HAL_PWR_CLEAR_FLAG(PWR_FLAG_WUF1);
 	}
 
 	if (init) {
-	  //Sleep(5000);
 	  println("----- MAIN_DS_TWR -----");
 	}
 	main_ds_twr(init);
@@ -451,6 +451,7 @@ void Error_Handler(void)
 	int i = 0;
   /* User can add his own implementation to report the HAL error return state */
 			i++;
+			println("error handler");
   /* USER CODE END Error_Handler_Debug */
 }
 
